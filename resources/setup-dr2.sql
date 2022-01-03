@@ -75,7 +75,7 @@ INSERT INTO Tracks (id, name, length, startz) VALUES (510, 'Ascenso por valle el
 INSERT INTO Tracks (id, name, length, startz) VALUES (511, 'Centenera', 10568.4296875, -2326.286865234375);
 
 -- Monaro, Australia:600
-INSERT INTO Tracks (id, name, length, startz) VALUES (600, 'Mount Kaye Pass', 13304.1201171875, -2352.93017578125);
+INSERT INTO Tracks (id, name, length, startz) VALUES (600, 'Mount Kaye Pass', 13304.1201171875, 2242.036865234375);
 INSERT INTO Tracks (id, name, length, startz) VALUES (601, 'Yambulla Mountain Descent', 6221.490234375, -2353.200439453125);
 INSERT INTO Tracks (id, name, length, startz) VALUES (602, 'Mount Kaye Pass Reverse', 13301.109375, -2353.1884765625);
 INSERT INTO Tracks (id, name, length, startz) VALUES (603, 'Taylor Farm Sprint', 7007.02001953125, -1261.5372314453125);
