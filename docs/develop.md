@@ -3,8 +3,8 @@
 Using an IDE is recommended, the author has been content with using [PyDev](https://www.pydev.org/). 
 
 ## Requirements
-- to set up a Python enviroment with the necessary dependencies, cf. to the job `build` in `.github/workflows/main.yml`
-- some dependencies require a C++ compiler with SDK, cf. [this hint](https://stackoverflow.com/a/44953739)  
+- to set up a Python environment with the necessary dependencies, cf. to the job `build` in `.github/workflows/main.yml`
+- some dependencies require a C++ compiler with SDK, cf. [this hint](https://stackoverflow.com/a/44953739) or [this bundle listing](https://stackoverflow.com/a/50210015)
 - optionally, install coverage
 
 ## Tasks
