@@ -90,7 +90,7 @@ Tested with
 - DiRT Rally (v1.22)
 - DiRT Rally 2.0 (v1.18)
 
-Ships with SQLite [3.35.5](https://www.sqlite.org/2021/sqlite-tools-win32-x86-3350500.zip).
+Ships with SQLite [3.39.4](https://www.sqlite.org/2022/sqlite-tools-win32-x86-3390400.zip).
 
 UDP data recognition in collaboration with ErlerPhilipp: https://github.com/ErlerPhilipp/dr2_logger.
 

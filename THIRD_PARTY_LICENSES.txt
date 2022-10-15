@@ -92,9 +92,9 @@ PyInstaller is licensed under
 ================================
  The PyInstaller licensing terms
 ================================
- 
 
-Copyright (c) 2010-2021, PyInstaller Development Team
+
+Copyright (c) 2010-2022, PyInstaller Development Team
 Copyright (c) 2005-2009, Giovanni Bajo
 Based on previous work under copyright (c) 2002 McMillan Enterprises, Inc.
 
@@ -131,7 +131,7 @@ Run-time Hooks
 
 Run-time Hooks are a different kind of files embedded within the final
 executable. To ease moving them into a separate repository, or into the
-respective project, these file are now licensed under the Apache License,
+respective project, these files are now licensed under the Apache License,
 Version 2.0.
 
 Run-time Hooks are in the directory
@@ -147,13 +147,13 @@ in the documentation directory, in the file
 ``doc/CREDITS.rst``.
 
 The core team that coordinates development on GitHub can be found here:
-https://github.com/pyinstaller/pyinstaller.  As of 2020, it consists of:
+https://github.com/pyinstaller/pyinstaller.  As of 2021, it consists of:
 
 * Hartmut Goebel
-* Legorooj
+* Jasper Harrison
 * Bryan Jones
 * Brenainn Woodsend
-
+* Rok Mandeljc
 
 Our Copyright Policy
 --------------------
@@ -173,7 +173,7 @@ to indicate the copyright and license terms:
 
 
 #-----------------------------------------------------------------------------
-# Copyright (c) 2005-2021, PyInstaller Development Team.
+# Copyright (c) 2005-2022, PyInstaller Development Team.
 #
 # Distributed under the terms of the GNU General Public License (version 2
 # or later) with exception for distributing the bootloader.
@@ -187,7 +187,7 @@ to indicate the copyright and license terms:
 For run-time hooks, the following banner should be used:
 
 #-----------------------------------------------------------------------------
-# Copyright (c) 2005-2021, PyInstaller Development Team.
+# Copyright (c) 2005-2022, PyInstaller Development Team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
