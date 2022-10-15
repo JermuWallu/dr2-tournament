@@ -1,14 +1,13 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import os
+
 block_cipher = None
 
-import sys
+# Get name parameter from environment
+namearg = os.getenv('pyinstaller_name')
 
-# Get name parameter from arguments
-index = sys.argv.index('--name')
-namearg = str(sys.argv[index + 1])
-
-stdlibExcludes = ['_bz2', '_ctypes', '_hashlib', '_lzma', '_ssl', 'pyexpat', 'asyncio', '_decimal']
+stdlibExcludes = ['_bz2', '_hashlib', '_lzma', '_ssl', '_decimal']
 
 a = Analysis(['timerecorder/timerecord.py'],
              pathex=['.'],
