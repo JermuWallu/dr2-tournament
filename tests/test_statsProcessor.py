@@ -1,7 +1,6 @@
 from builtins import range
 import unittest
 from unittest.mock import MagicMock, ANY
-import simpleaudio
 
 from timerecorder.statsProcessor import StatsProcessor
 from timerecorder import config
@@ -11,9 +10,6 @@ from tests.test_base import TestBase
 FIELD_COUNT = 66
 
 class TestStatsProcessor(TestBase):
-
-    def mockAwaySideEffects(self):
-        simpleaudio.WaveObject = MagicMock()
 
     def __init__(self, methodName):
         TestBase.__init__(self, methodName, 'test-files')

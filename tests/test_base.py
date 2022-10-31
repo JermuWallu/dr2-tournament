@@ -5,9 +5,6 @@ from timerecorder import config, log
 
 class TestBase(unittest.TestCase):
 
-    def mockAwaySideEffects(self):
-        pass
-
     def __init__(self, methodName, testroot):
         unittest.TestCase.__init__(self, methodName)
         if not os.path.exists(testroot):
@@ -17,5 +14,3 @@ class TestBase(unittest.TestCase):
         log.init(testLog)
 
         config.init(testroot + '/config.yml')
-
-        self.mockAwaySideEffects()

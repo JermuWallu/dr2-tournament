@@ -1,6 +1,6 @@
 # Building
 
-Using an IDE is recommended, the author has been content with using [PyDev](https://www.pydev.org/). 
+Using an IDE is recommended, the author had been content with using [PyDev](https://www.pydev.org/) before finding that [PyCharm](https://www.jetbrains.com/pycharm/) provides better support.
 
 ## Requirements
 - to set up a Python environment with the necessary dependencies, cf. to the job `build` in `.github/workflows/main.yml`

@@ -3,7 +3,6 @@ More or less a state machine for the game, and really the heart of this tool
 '''
 from datetime import timedelta
 import time
-import simpleaudio as sa
 
 from . import config
 from .ambiguousResultHandler import AmbiguousResultHandler
@@ -13,6 +12,7 @@ from .databaseAccess import identify, AMBIGUOUS
 from .gearTracker import GearTracker
 from .inputTracker import InputTracker
 from .log import getLogger
+from .playback import play_wave
 from .progressTracker import ProgressTracker
 from .respawnTracker import RespawnTracker
 from .speedTracker import SpeedTracker
@@ -121,7 +121,7 @@ class StatsProcessor():
         self.gear_tracker = GearTracker(self.respawn_tracker)
         self.progress_tracker = ProgressTracker()
         self.speed_tracker = SpeedTracker()
-        self.input_tracker = InputTracker(self.speed_tracker, self._playNotificationSound) if config.GET.user_signals else BaseTracker()
+        self.input_tracker = InputTracker(self.speed_tracker, lambda: play_wave("notify.wav")) if config.GET.user_signals else BaseTracker()
 
     def _startStage(self, stats):
         dbAccess = self.database_access
@@ -180,10 +180,3 @@ class StatsProcessor():
 
         elif self._statsWithTelemetry(stats) and stageProgress <= GO_LINE_PROGRESS and not inStage:
             self._startStage(stats)
-
-    def _playNotificationSound(self):
-        try:
-            waveObj = sa.WaveObject.from_wave_file('notify.wav')
-            waveObj.play()
-        except:  #pylint: disable=bare-except
-            logger.debug('Failed to play notification')
