@@ -81,7 +81,7 @@ Linux users refer to [this issue](https://github.com/soong-construction/dirt-ral
 
 ## Resources
 UDP telemetry documentation (cf. DiRT 4 for DiRT Rally 2.0):  
-[https://docs.google.com/spreadsheets/d/1UTgeE7vbnGIzDz-URRk2eBIPc_LR1vWcZklp7xD9N0Y/edit#gid=0]
+[https://docs.google.com/spreadsheets/d/1Xsv5E9jwgJsiXCZQlM5Ae2hH5mUnjdHlTtEadnSnaeI/edit?usp=sharing]
 
 Contributors cf. to `docs/develop.md`.
 
