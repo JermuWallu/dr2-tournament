@@ -41,8 +41,16 @@ CAR: Volkswagen Golf GTI 16V
 Volkswagen Golf GTI 16V: H-PATTERN shifting, 5 speed, with manual CLUTCH, with HANDBRAKE
 ```
 - On stage completion, it reports your top speed and time and saves it to the database 
-  - to quickly list your recorded times with SQLite, run `list-laptimes.bat`  
   - to dump the database into a CSV file consumable by your favorite spreadsheet editor, run `export-laptimes.bat`  
+  - to quickly view your recorded times like below, run `list-laptimes.bat`  
+```
+┌───────────────────────────────────────┬────────────────────────────────┬─────────────────────┬───────────┬──────────┐
+│                 Track                 │              Car               │        Date         │   Time    │ Topspeed │
+├───────────────────────────────────────┼────────────────────────────────┼─────────────────────┼───────────┼──────────┤
+│ Annbank Station                       │ Peugeot 205 GTI                │ 2020-07-30 12:47:48 │ 05:32.953 │ 158.4    │
+│ Anodou Farmakas                       │ Lancia Stratos                 │ 2020-04-26 11:26:44 │ 07:59.897 │ 129.6    │
+│ Anodou Farmakas                       │ Porsche 911 SC RS              │ 2020-04-14 18:28:20 │ 08:08.114 │ 136.8    │
+```
 
 ## Limitations
 Since DiRT Rally [2.0] telemetry data doesn't allow to clearly identify every available car and track, this tool will sometimes ask you to resolve this after completing a stage. You can [enable heuristics](docs/configuration.md#heuristics) to somewhat alleviate this limitation.  
