@@ -1,6 +1,6 @@
 # Building
 
-Using an IDE is recommended, the author has been content with using [PyDev](https://www.pydev.org/). 
+Using an IDE is recommended, the author had been content with using [PyDev](https://www.pydev.org/) before finding that [PyCharm](https://www.jetbrains.com/pycharm/) provides better support.
 
 ## Requirements
 - to set up a Python environment with the necessary dependencies, cf. to the job `build` in `.github/workflows/main.yml`
@@ -34,6 +34,7 @@ To bundle for DiRT Rally 2.0
 *Hint regarding Linux*: Use `sh resources/build-local.sh dr1` to build the installation folder for DiRT Rally
 - ensure that this folder is on the search path
 - ensure that SQLite 3.33.0 or newer is on the search path
+- the used audio library is platform dependent, cf. https://people.csail.mit.edu/hubert/pyaudio/ for necessary steps on Linux
 - you might need to install an additional library under Debian: `libasound2-dev`
 
 # Releasing
