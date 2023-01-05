@@ -121,7 +121,10 @@ class StatsProcessor():
         self.gear_tracker = GearTracker(self.respawn_tracker)
         self.progress_tracker = ProgressTracker()
         self.speed_tracker = SpeedTracker()
-        self.input_tracker = InputTracker(self.speed_tracker, lambda: play_wave("notify.wav")) if config.GET.user_signals else BaseTracker()
+        self.input_tracker = InputTracker(self.speed_tracker, self.__play_sound) if config.GET.user_signals else BaseTracker()
+
+    def __play_sound(self):
+        play_wave("notify.wav")
 
     def _startStage(self, stats):
         dbAccess = self.database_access

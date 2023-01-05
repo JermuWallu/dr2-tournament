@@ -14,9 +14,9 @@ def play_wave(wave_file: str) -> None:
         audio = pyaudio.PyAudio()
 
         stream = audio.open(format=audio.get_format_from_width(file.getsampwidth()),
-                        channels=file.getnchannels(),
-                        rate=file.getframerate(),
-                        output=True)
+                            channels=file.getnchannels(),
+                            rate=file.getframerate(),
+                            output=True)
 
         data = file.readframes(CHUNK)
         while len(data):

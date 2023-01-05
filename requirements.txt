@@ -1,5 +1,5 @@
 PyYAML==5.4.1
-pyaudio==v0.2.12
+pyaudio==v0.2.13
 pytest
 pylint
 pyinstaller==5.5
