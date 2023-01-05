@@ -7,8 +7,9 @@ fi
 game=$1
 echo "Building for $game"
 rm -f dirtrally-lb.db
-sqlite3 -batch -init resources/setup-${game}.sql dirtrally-lb.db .exit 
-pyinstaller timerecord.spec --noconfirm --name timerecorder-${game}
+sqlite3 -batch -init resources/setup-${game}.sql dirtrally-lb.db .exit
+export pyinstaller_name=timerecorder-${game}
+pyinstaller timerecord.spec --noconfirm
 
 cd dist/timerecorder-${game}
 rm sqlite3.exe
