@@ -49,6 +49,8 @@ Not all steps are necessary for each release
 Finally
 - bump VERSION
 - create tag
+- push to build it on GitHub
+- upload exe to VirusTotal to ensure low amount of red flags
 
 ## Tasks
 
