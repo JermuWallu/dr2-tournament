@@ -27,5 +27,7 @@ O = github.com/soong-construction
 The certificate thumbprint is (case does not matter):
 
 ```
-1AA6D29B363597D8E07BC93051E41A6744D834D5
+0222B0EA35D7F82F631625E1AF4BCE1555F5F6F5
 ```
+
+(Before version 2.10.7, it was `1AA6D29B363597D8E07BC93051E41A6744D834D5`)

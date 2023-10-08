@@ -69,7 +69,7 @@ The `LICENSE` must be kept up-to-date, although it should rarely change.
 The `THIRD_PARTY_LICENSES` include all works from outside this project, which must be compatible to the chosen `LICENSE`.
 - All used libraries like PyYAML: Include necessary texts
 - All used build tools like pytest: same
-- PyInstaller because we build bundles with it that are not bound to its license: https://github.com/pyinstaller/pyinstaller/blob/v5.6.2/COPYING.txt
+- PyInstaller because we build bundles with it that are not bound to its license: https://github.com/pyinstaller/pyinstaller/blob/v5.13.2/COPYING.txt
 - CPython including special module licenses for the bundles: https://docs.python.org/3.11/license.html#psf-license-agreement-for-python-release
 - All used binaries like sounds
 
