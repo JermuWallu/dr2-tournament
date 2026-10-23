@@ -1,4 +1,4 @@
-import asyncore
+import socket
 import unittest
 from unittest.mock import MagicMock
 from timerecorder.statsProcessor import StatsProcessor
@@ -19,41 +19,56 @@ class TestReceiver(TestBase):
 
     def tearDown(self):
         StatsProcessor._updateResources = self.update_resources_function
-        try:
-            self.thing.close()
-        except:
-            raise
+        self.thing.close()
 
     def testHandleReadCallsParse(self):
         self.thing.reconnect()
-
         self.thing.parse = MagicMock()
-
         self.thing.recv = MagicMock(return_value=SIXTY_SIX_FIELDS)
 
         self.thing.handle_read()
 
         self.assertTrue(self.thing.parse.called, 'Never called parse')
 
-    def testReRaiseErrorOnRead(self):
-        self.thing.reconnect()
-        self.thing.handle_close = MagicMock()
+    def testParseHandsStatsToProcessor(self):
+        self.thing.stats_processor = MagicMock()
 
+        self.thing.parse(SIXTY_SIX_FIELDS)
+
+        stats = self.thing.stats_processor.handleStats.call_args[0][0]
+        self.assertEqual(66, len(stats))
+
+    def testShortPacketIsIgnored(self):
+        self.thing.stats_processor = MagicMock()
+
+        self.thing.parse(SIXTY_SIX_FIELDS[:20])
+
+        self.thing.stats_processor.handleStats.assert_not_called()
+
+    def testLoopTicksOnTimeoutAndStopsOnClose(self):
+        self.thing.reconnect()
+        ticks = []
+
+        def tick():
+            ticks.append(1)
+            if len(ticks) == 2:
+                self.thing.running = False
+
+        self.thing.recv = MagicMock(side_effect=socket.timeout)
+        self.thing.loop(tick)
+
+        self.assertEqual(2, len(ticks))
+        self.assertIsNone(self.thing.socket)
+
+    def testErrorOnReadClosesAndReraises(self):
+        self.thing.reconnect()
+        self.thing.recv = MagicMock(return_value=SIXTY_SIX_FIELDS)
         self.thing.parse = MagicMock(side_effect=IOError)
 
         with self.assertRaises(OSError):
-            asyncore.read(self.thing)
+            self.thing.loop()
 
-        self.thing.handle_close.assert_called_once()
-
-    def testReRaiseException(self):
-        self.thing.reconnect()
-        self.thing.handle_close = MagicMock()
-
-        with self.assertRaises(OSError):
-            self.thing.handle_expt()
-
-        self.thing.handle_close.assert_called_once()
+        self.assertIsNone(self.thing.socket)
 
 if __name__ == "__main__":
     unittest.main()

@@ -41,6 +41,27 @@ class StatsProcessor():
         self.user_array = self.database.initializeLaptimesDb()
         self._initTrackers()
 
+        self.listener = None
+        self.last_telemetry = None
+
+    def setListener(self, listener):
+        '''
+        Registers an object that is informed about stage events. It may implement any of
+        packetReceived(stats), stageStarted(track, car), stageFinished(laptime, track, car), stageAborted()
+        '''
+        self.listener = listener
+
+    def _notify(self, event, *args):
+        if self.listener is None:
+            return
+        callback = getattr(self.listener, event, None)
+        if callback is None:
+            return
+        try:
+            callback(*args)
+        except Exception:  #pylint: disable=broad-except
+            logger.exception("Listener failed to handle %s", event)
+
     def _updateResources(self, approot):
         database = Database(approot).setUp()
         return database
@@ -93,7 +114,10 @@ class StatsProcessor():
         return isAborted
 
     def handleStats(self, stats):
+        self._notify('packetReceived', stats)
+
         if self._statsWithTelemetry(stats):
+            self.last_telemetry = stats
             self.respawn_tracker.track(stats)
             self.time_tracker.track(stats)
             self.progress_tracker.track(stats)
@@ -147,8 +171,10 @@ class StatsProcessor():
         if config.GET.show_car_controls:
             self._showCarControlInformation()
 
+        self._notify('stageStarted', self.track, self.car)
+
     def _finishStage(self, stats):
-        laptime = stats[62]
+        laptime = self._finalLapTime(stats)
         timestamp = time.time()
 
         track, car = self._handleAmbiguities(timestamp)
@@ -160,6 +186,23 @@ class StatsProcessor():
         else:
             previousBestTime = previousBest[1]
             self._logResults(laptime, track, car, previousBestTime)
+
+        self._notify('stageFinished', laptime, self.track, self.car)
+
+    def _finalLapTime(self, stats):
+        '''
+        The DR2 time trial finish is detected on an all-zero packet, which carries no time.
+        Fall back to the last packet that still had telemetry in that case.
+        '''
+        laptime = stats[62]
+        if laptime > 0 or self.last_telemetry is None:
+            return laptime
+
+        laptime = self.last_telemetry[62]
+        if laptime <= 0:
+            laptime = self.last_telemetry[1]
+            logger.warning("No final time in telemetry, using the last running time %s", self._formatLapTime(laptime))
+        return laptime
 
     def _handleAmbiguities(self, timestamp):
         car = self.ambiguous_result_handler.handleAmbiguousCars(timestamp, self.car, self.track, self.gear_tracker, self.input_tracker)
@@ -179,6 +222,8 @@ class StatsProcessor():
             self.resetRecognition()
 
         elif isAborted:
+            if inStage:
+                self._notify('stageAborted')
             self.resetRecognition()
 
         elif self._statsWithTelemetry(stats) and stageProgress <= GO_LINE_PROGRESS and not inStage:

@@ -5,7 +5,7 @@ from tests.test_base import TestBase
 from timerecorder.config import Config, readVersion
 
 TESTROOT = 'test-files'
-DEFAULT_CONFIG_COUNT = 5
+DEFAULT_CONFIG_COUNT = 6
 
 class TestConfig(TestBase):
 

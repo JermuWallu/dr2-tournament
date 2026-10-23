@@ -1,0 +1,180 @@
+'''
+Storage for the LAN tournament: players and their attempts per track/car combination.
+
+Kept in its own SQLite file (tournament.db) so the original laptimes database stays untouched.
+Every call opens its own connection, so it can be used from the UDP thread, the UI thread
+and the web server at the same time.
+'''
+import sqlite3
+import time
+from contextlib import closing
+
+FINISHED = 'FINISHED'
+DNF = 'DNF'
+
+MAX_NAME_LENGTH = 24
+
+SCHEMA = '''
+CREATE TABLE IF NOT EXISTS players (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    name_key TEXT NOT NULL UNIQUE,
+    created_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS results (
+    id INTEGER PRIMARY KEY,
+    player_id INTEGER NOT NULL REFERENCES players(id),
+    track TEXT NOT NULL,
+    car TEXT NOT NULL,
+    attempt INTEGER NOT NULL,
+    time REAL,
+    status TEXT NOT NULL CHECK (status IN ('FINISHED', 'DNF')),
+    note TEXT,
+    recorded_at REAL NOT NULL,
+    UNIQUE (player_id, track, car, attempt)
+);
+CREATE INDEX IF NOT EXISTS results_combo ON results (track, car);
+'''
+
+class AttemptsExhausted(Exception):
+    pass
+
+def cleanName(name):
+    return ' '.join((name or '').split())[:MAX_NAME_LENGTH]
+
+def nameKey(name):
+    return cleanName(name).casefold()
+
+def formatTime(seconds):
+    if seconds is None:
+        return 'DNF'
+    millis = int(round(seconds * 1000))
+    minutes, millis = divmod(millis, 60000)
+    secs, millis = divmod(millis, 1000)
+    return f'{minutes:02d}:{secs:02d}.{millis:03d}'
+
+class TournamentDatabase():
+
+    def __init__(self, path, maxAttempts=2):
+        self.path = path
+        self.max_attempts = maxAttempts
+        with closing(self._connect()) as conn:
+            conn.execute('PRAGMA journal_mode=WAL;')
+            conn.executescript(SCHEMA)
+            conn.commit()
+
+    def _connect(self):
+        conn = sqlite3.connect(self.path, timeout=10)
+        conn.row_factory = sqlite3.Row
+        conn.execute('PRAGMA foreign_keys = ON;')
+        return conn
+
+    def _findPlayer(self, conn, name):
+        return conn.execute('SELECT id, name FROM players WHERE name_key = ?', (nameKey(name),)).fetchone()
+
+    def _attempts(self, conn, playerId, track, car):
+        rows = conn.execute('SELECT attempt, time, status, note FROM results '
+                            'WHERE player_id = ? AND track = ? AND car = ? ORDER BY attempt',
+                            (playerId, track, car)).fetchall()
+        return [dict(row) for row in rows]
+
+    def lookup(self, name, track, car):
+        '''
+        Information for the nickname prompt. Returns None for an empty name.
+        '''
+        if not nameKey(name):
+            return None
+
+        with closing(self._connect()) as conn:
+            player = self._findPlayer(conn, name)
+            attempts = self._attempts(conn, player['id'], track, car) if player else []
+
+        return {
+            'found': player is not None,
+            'name': player['name'] if player else cleanName(name),
+            'attempts': attempts,
+            'used': len(attempts),
+            'max': self.max_attempts,
+            'remaining': max(0, self.max_attempts - len(attempts)),
+        }
+
+    def recordResult(self, name, track, car, laptime, status, note=None):
+        '''
+        Stores the next attempt for the player and returns its number.
+        The player is created on their first result, keeping the name as first typed.
+        '''
+        if not nameKey(name):
+            raise ValueError('Empty nickname')
+        if status not in (FINISHED, DNF):
+            raise ValueError(f'Unknown status {status}')
+
+        with closing(self._connect()) as conn:
+            with conn:
+                player = self._findPlayer(conn, name)
+                if player is None:
+                    cursor = conn.execute('INSERT INTO players (name, name_key, created_at) VALUES (?, ?, ?)',
+                                          (cleanName(name), nameKey(name), time.time()))
+                    playerId = cursor.lastrowid
+                else:
+                    playerId = player['id']
+
+                used = len(self._attempts(conn, playerId, track, car))
+                if used >= self.max_attempts:
+                    raise AttemptsExhausted(f'{cleanName(name)} has used all {self.max_attempts} attempts')
+
+                attempt = used + 1
+                conn.execute('INSERT INTO results (player_id, track, car, attempt, time, status, note, recorded_at) '
+                             'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                             (playerId, track, car, attempt, round(laptime, 3) if status == FINISHED else None,
+                              status, note, time.time()))
+        return attempt
+
+    def combos(self):
+        '''
+        All track/car combinations with results, most recently active first.
+        '''
+        with closing(self._connect()) as conn:
+            rows = conn.execute('SELECT track, car, COUNT(DISTINCT player_id) AS players, MAX(recorded_at) AS last '
+                                'FROM results GROUP BY track, car ORDER BY last DESC').fetchall()
+        return [dict(row) for row in rows]
+
+    def standings(self, track, car):
+        '''
+        One row per player: best time first, then name alphabetically. Players without
+        a finished run (only DNFs) go to the bottom, alphabetically.
+        '''
+        with closing(self._connect()) as conn:
+            rows = conn.execute('SELECT p.name, r.attempt, r.time, r.status FROM results r '
+                                'JOIN players p ON p.id = r.player_id '
+                                'WHERE r.track = ? AND r.car = ?', (track, car)).fetchall()
+
+        players = {}
+        for row in rows:
+            entry = players.setdefault(row['name'], {'name': row['name'], 'attempts': {}, 'best': None})
+            entry['attempts'][row['attempt']] = row['time'] if row['status'] == FINISHED else DNF
+            if row['status'] == FINISHED and (entry['best'] is None or row['time'] < entry['best']):
+                entry['best'] = row['time']
+
+        def sortKey(entry):
+            noTime = entry['best'] is None
+            return (noTime, entry['best'] if not noTime else 0.0, entry['name'].casefold())
+
+        ordered = sorted(players.values(), key=sortKey)
+
+        leader = ordered[0]['best'] if ordered else None
+        position = 0
+        previousBest = object()
+        for index, entry in enumerate(ordered, start=1):
+            if entry['best'] is None:
+                entry['position'] = None
+            else:
+                # equal times share a position
+                if entry['best'] != previousBest:
+                    position = index
+                    previousBest = entry['best']
+                entry['position'] = position
+            entry['gap'] = entry['best'] - leader if entry['best'] is not None and leader is not None else None
+            entry['attempts'] = [entry['attempts'].get(n) for n in range(1, self.max_attempts + 1)]
+            entry['used'] = sum(1 for a in entry['attempts'] if a is not None)
+
+        return ordered

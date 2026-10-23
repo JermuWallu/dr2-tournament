@@ -1,4 +1,3 @@
-import asyncore
 import os.path
 import sys
 
@@ -33,7 +32,7 @@ def main(logfile):
         receiver = Receiver(approot)
         receiver.reconnect()
 
-        asyncore.loop()
+        receiver.loop()
 
     except KeyboardInterrupt:
         pass

@@ -1,0 +1,5 @@
+# Tournament mode, tested with Python 3.12+ on Windows (tkinter ships with the python.org installer)
+PyYAML>=6.0.2
+Flask>=3.0
+# Optional, only needed for the user_signals heuristics sound
+# pyaudio>=0.2.14

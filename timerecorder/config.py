@@ -19,6 +19,16 @@ HEURISTICS_ACTIVATE = 'activate'
 AUTHENTIC_SHIFTING = 'authentic_shifting'
 USER_SIGNALS = 'user_signals'
 
+TOURNAMENT = 'tournament'
+TOURNAMENT_DEFAULTS = {
+    'max_attempts': 2,
+    'auto_pause': 1,
+    'game_window_title': 'DiRT Rally 2.0',
+    'dnf_timeout_seconds': 15,
+    'leaderboard_host': '0.0.0.0',
+    'leaderboard_port': 5000,
+}
+
 TELEMETRY_SERVER = 'telemetry_server'
 HOST = 'host'
 PORT = 'port'
@@ -57,6 +67,8 @@ class Config(dict):  #pylint: disable=too-many-instance-attributes
         self.authentic_shifting = None
         self.user_signals = None
 
+        self.tournament = None
+
         self._migrate()
 
     def dump(self):
@@ -93,6 +105,11 @@ class Config(dict):  #pylint: disable=too-many-instance-attributes
         self.setdefault(KEEP_UPDATE_SCRIPTS_DAYS, KEEP_UPDATE_SCRIPTS_DAYS_DEFAULT)
 
         self._setDefaultHeuristics()
+
+        self.setdefault(TOURNAMENT, dict(TOURNAMENT_DEFAULTS))
+        for key, value in TOURNAMENT_DEFAULTS.items():
+            self[TOURNAMENT].setdefault(key, value)
+
         self.dump()
 
     def _loadBasicSettings(self):
@@ -111,6 +128,17 @@ class Config(dict):  #pylint: disable=too-many-instance-attributes
         if self.heuristics_activated:
             logger.info('HEURISTICS activated')
 
+    def _loadTournament(self):
+        settings = self[TOURNAMENT]
+        self.tournament = {
+            'max_attempts': int(settings['max_attempts']),
+            'auto_pause': int(settings['auto_pause']),
+            'game_window_title': str(settings['game_window_title']),
+            'dnf_timeout_seconds': float(settings['dnf_timeout_seconds']),
+            'leaderboard_host': str(settings['leaderboard_host']),
+            'leaderboard_port': int(settings['leaderboard_port']),
+        }
+
     def load(self):
         logger.debug('Loading config')
         file = os.path.basename(self.filename)
@@ -118,6 +146,7 @@ class Config(dict):  #pylint: disable=too-many-instance-attributes
         try:
             self._loadBasicSettings()
             self._loadHeuristics()
+            self._loadTournament()
 
         except Exception as ex:
             logger.debug('Failed to load config file %s: %s', file, ex)

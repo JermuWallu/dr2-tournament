@@ -52,6 +52,9 @@ Volkswagen Golf GTI 16V: H-PATTERN shifting, 5 speed, with manual CLUTCH, with H
 │ Anodou Farmakas                       │ Porsche 911 SC RS              │ 2020-04-14 18:28:20 │ 08:08.114 │ 136.8    │
 ```
 
+## LAN tournament mode
+For a two-attempt LAN time attack with nickname prompt and live web leaderboard, see [docs/tournament.md](docs/tournament.md).
+
 ## Limitations
 Since DiRT Rally [2.0] telemetry data doesn't allow to clearly identify every available car and track, this tool will sometimes ask you to resolve this after completing a stage. You can [enable heuristics](docs/configuration.md#heuristics) to somewhat alleviate this limitation.  
 

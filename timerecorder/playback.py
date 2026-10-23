@@ -1,5 +1,4 @@
 import wave
-import pyaudio
 
 from timerecorder.log import getLogger
 
@@ -10,6 +9,9 @@ logger = getLogger(__name__)
 
 def play_wave(wave_file: str) -> None:
     try:
+        # Imported lazily: pyaudio is only needed for the optional user signals heuristics
+        import pyaudio  # pylint: disable=import-outside-toplevel
+
         file = wave.open(wave_file, "rb")
         audio = pyaudio.PyAudio()
 

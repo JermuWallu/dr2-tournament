@@ -1,5 +1,8 @@
-PyYAML==6.0.1
-pyaudio==v0.2.13
+PyYAML>=6.0.2
+# optional sound for the user_signals heuristics; no Windows wheel for Python 3.14+ yet
+pyaudio>=0.2.14; python_version < "3.14"
 pytest
 pylint
-pyinstaller==5.13.2
+# 5.13.2 only supports Python up to 3.12
+pyinstaller>=6.10
+Flask>=3.0
