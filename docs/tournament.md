@@ -46,6 +46,8 @@ tournament:
   dnf_timeout_seconds: 15
   leaderboard_host: 0.0.0.0  # 127.0.0.1 to keep the leaderboard on this PC only
   leaderboard_port: 5000
+  prompt_mode: fullscreen    # or 'centered': a window in the middle of the main screen
+  start_delay_seconds: 2     # 'HYVÄÄ RALLIA!' countdown after Start before the game resumes
 ```
 
 ### Check on your PC before the event

@@ -116,7 +116,8 @@ def main():
 
     startTelemetry(approot, session, bridge)
 
-    window = PromptWindow(session, bridge, leaderboardUrl=url)
+    window = PromptWindow(session, bridge, leaderboardUrl=url,
+                          mode=settings['prompt_mode'], startDelaySeconds=settings['start_delay_seconds'])
     try:
         window.run()
     except KeyboardInterrupt:

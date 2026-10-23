@@ -27,6 +27,8 @@ TOURNAMENT_DEFAULTS = {
     'dnf_timeout_seconds': 15,
     'leaderboard_host': '0.0.0.0',
     'leaderboard_port': 5000,
+    'prompt_mode': 'fullscreen',
+    'start_delay_seconds': 2,
 }
 
 TELEMETRY_SERVER = 'telemetry_server'
@@ -137,6 +139,8 @@ class Config(dict):  #pylint: disable=too-many-instance-attributes
             'dnf_timeout_seconds': float(settings['dnf_timeout_seconds']),
             'leaderboard_host': str(settings['leaderboard_host']),
             'leaderboard_port': int(settings['leaderboard_port']),
+            'prompt_mode': str(settings['prompt_mode']),
+            'start_delay_seconds': float(settings['start_delay_seconds']),
         }
 
     def load(self):

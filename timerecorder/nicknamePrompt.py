@@ -3,7 +3,9 @@ The nickname window shown when a stage has loaded (tkinter, runs on the main thr
 
 Other threads talk to it only through TkUiBridge, which queues calls for the Tk event loop.
 '''
+import math
 import queue
+import time
 
 from .tournamentDatabase import DNF, formatTime, MAX_NAME_LENGTH
 from . import gameControl
@@ -68,59 +70,86 @@ class TkUiBridge():
         self.queue.put(('fatal', (text,)))
 
 
+FULLSCREEN = 'fullscreen'
+CENTERED = 'centered'
+GO_TEXT = 'HYVÄÄ RALLIA!'
+COUNTDOWN_TICK_MS = 100
+
+
 class PromptWindow():  #pylint: disable=too-many-instance-attributes
 
-    def __init__(self, session, bridge, leaderboardUrl=None):
+    def __init__(self, session, bridge, leaderboardUrl=None, mode=FULLSCREEN, startDelaySeconds=2.0):  #pylint: disable=too-many-arguments,too-many-statements
         import tkinter as tk  #pylint: disable=import-outside-toplevel
         self.tk = tk
         self.session = session
         self.bridge = bridge
         self.lookup_job = None
         self.can_start = False
+        self.counting_down = False
+        self.mode = mode if mode in (FULLSCREEN, CENTERED) else FULLSCREEN
+        self.start_delay = max(0.0, float(startDelaySeconds))
+        self.leaderboard_url = leaderboardUrl
+        scale = 1.6 if self.mode == FULLSCREEN else 1.0
+        size = lambda points: int(round(points * scale))
 
         root = tk.Tk()
         self.root = root
         root.title('DR2 Tournament')
-        root.configure(bg=COLORS['bg'], padx=28, pady=24)
+        root.configure(bg=COLORS['bg'])
         root.resizable(False, False)
         root.protocol('WM_DELETE_WINDOW', root.bell)  # players must not close it, admins use Ctrl+C in the console
 
-        label = lambda text, size, color, bold=False: tk.Label(
-            root, text=text, bg=COLORS['bg'], fg=color, font=('Segoe UI', size, 'bold' if bold else 'normal'),
+        # --- nickname panel ---
+        panel = tk.Frame(root, bg=COLORS['bg'], padx=size(28), pady=size(24))
+        self.panel = panel
+
+        label = lambda parent, text, points, color, bold=False: tk.Label(
+            parent, text=text, bg=COLORS['bg'], fg=color, font=('Segoe UI', size(points), 'bold' if bold else 'normal'),
             justify='left', anchor='w')
 
-        label('DR2 TOURNAMENT', 10, COLORS['accent'], True).grid(row=0, column=0, sticky='w')
-        self.track_label = label('', 18, COLORS['text'], True)
-        self.track_label.grid(row=1, column=0, sticky='w', pady=(6, 0))
-        self.car_label = label('', 13, COLORS['muted'])
+        label(panel, 'DR2 TOURNAMENT', 10, COLORS['accent'], True).grid(row=0, column=0, sticky='w')
+        self.track_label = label(panel, '', 18, COLORS['text'], True)
+        self.track_label.grid(row=1, column=0, sticky='w', pady=(size(6), 0))
+        self.car_label = label(panel, '', 13, COLORS['muted'])
         self.car_label.grid(row=2, column=0, sticky='w')
 
-        label('Nickname', 11, COLORS['muted']).grid(row=3, column=0, sticky='w', pady=(20, 4))
+        label(panel, 'Nickname', 11, COLORS['muted']).grid(row=3, column=0, sticky='w', pady=(size(20), size(4)))
         self.name = tk.StringVar()
         self.name.trace_add('write', self._onType)
-        self.entry = tk.Entry(root, textvariable=self.name, font=('Segoe UI', 20), width=22,
+        self.entry = tk.Entry(panel, textvariable=self.name, font=('Segoe UI', size(20)), width=22,
                               bg=COLORS['panel'], fg=COLORS['text'], insertbackground=COLORS['text'],
                               relief='flat', highlightthickness=2, highlightcolor=COLORS['accent'],
                               highlightbackground=COLORS['panel'])
-        self.entry.grid(row=4, column=0, sticky='we', ipady=6)
+        self.entry.grid(row=4, column=0, sticky='we', ipady=size(6))
         self.entry.bind('<Return>', lambda _event: self._start())
 
-        self.status = label('', 12, COLORS['info'])
-        self.status.configure(wraplength=420)
-        self.status.grid(row=5, column=0, sticky='w', pady=(12, 0))
+        self.status = label(panel, '', 12, COLORS['info'])
+        self.status.configure(wraplength=size(420))
+        self.status.grid(row=5, column=0, sticky='w', pady=(size(12), 0))
 
-        self.button = tk.Button(root, text='START', command=self._start, font=('Segoe UI', 14, 'bold'),
+        self.button = tk.Button(panel, text='START', command=self._start, font=('Segoe UI', size(14), 'bold'),
                                 bg=COLORS['button'], fg=COLORS['button_text'], activebackground=COLORS['accent'],
-                                relief='flat', padx=24, pady=8, disabledforeground=COLORS['muted'])
-        self.button.grid(row=6, column=0, sticky='we', pady=(18, 0))
+                                relief='flat', padx=size(24), pady=size(8), disabledforeground=COLORS['muted'])
+        self.button.grid(row=6, column=0, sticky='we', pady=(size(18), 0))
 
-        self.pause_label = label('', 9, COLORS['muted'])
-        self.pause_label.grid(row=7, column=0, sticky='w', pady=(10, 0))
+        self.pause_label = label(panel, '', 9, COLORS['muted'])
+        self.pause_label.grid(row=7, column=0, sticky='w', pady=(size(10), 0))
 
         footer = 'Last result: -' if leaderboardUrl is None else f'Leaderboard: {leaderboardUrl}'
-        self.footer = label(footer, 9, COLORS['muted'])
-        self.footer.grid(row=8, column=0, sticky='w', pady=(4, 0))
-        self.leaderboard_url = leaderboardUrl
+        self.footer = label(panel, footer, 9, COLORS['muted'])
+        self.footer.grid(row=8, column=0, sticky='w', pady=(size(4), 0))
+
+        # --- "hyvää rallia" countdown panel ---
+        goScale = 2.0 if self.mode == FULLSCREEN else 1.0
+        self.go_panel = tk.Frame(root, bg=COLORS['bg'], padx=size(28), pady=size(24))
+        self.go_name = tk.Label(self.go_panel, text='', bg=COLORS['bg'], fg=COLORS['muted'],
+                                font=('Segoe UI', int(18 * goScale)))
+        self.go_name.pack()
+        tk.Label(self.go_panel, text=GO_TEXT, bg=COLORS['bg'], fg=COLORS['accent'],
+                 font=('Segoe UI', int(54 * goScale), 'bold')).pack()
+        self.countdown = tk.Label(self.go_panel, text='', bg=COLORS['bg'], fg=COLORS['text'],
+                                  font=('Segoe UI', int(40 * goScale), 'bold'))
+        self.countdown.pack(pady=(int(8 * goScale), 0))
 
         self._setCanStart(False)
         root.withdraw()
@@ -131,6 +160,33 @@ class PromptWindow():  #pylint: disable=too-many-instance-attributes
 
     def close(self):
         self.root.quit()
+
+    # --- layout ---
+
+    def _showPanel(self, panel):
+        for other in (self.panel, self.go_panel):
+            if other is not panel:
+                other.place_forget()
+                other.pack_forget()
+
+        if self.mode == FULLSCREEN:
+            panel.place(relx=0.5, rely=0.5, anchor='center')
+        else:
+            panel.pack()
+
+    def _present(self):
+        root = self.root
+        root.deiconify()
+        if self.mode == FULLSCREEN:
+            root.attributes('-fullscreen', True)
+        else:
+            root.update_idletasks()
+            width, height = root.winfo_reqwidth(), root.winfo_reqheight()
+            x = (root.winfo_screenwidth() - width) // 2
+            y = (root.winfo_screenheight() - height) // 2
+            root.geometry(f'+{max(0, x)}+{max(0, y)}')
+        root.attributes('-topmost', True)
+        root.lift()
 
     # --- bridge commands ---
 
@@ -144,6 +200,7 @@ class PromptWindow():  #pylint: disable=too-many-instance-attributes
         self.root.after(POLL_MS, self._poll)
 
     def _cmd_showPrompt(self, track, car):
+        self.counting_down = False
         self.track_label.configure(text=track)
         self.car_label.configure(text=car)
         self.name.set('')
@@ -151,12 +208,12 @@ class PromptWindow():  #pylint: disable=too-many-instance-attributes
         self.pause_label.configure(text='')
         self._setCanStart(False)
 
-        self.root.deiconify()
-        self.root.attributes('-topmost', True)
-        self.root.lift()
+        self._showPanel(self.panel)
+        self._present()
         self.root.after(150, self._grabFocus)
 
     def _cmd_hidePrompt(self):
+        self.counting_down = False
         self.root.withdraw()
 
     def _cmd_setGamePaused(self, paused):
@@ -172,6 +229,7 @@ class PromptWindow():  #pylint: disable=too-many-instance-attributes
 
     def _cmd_fatal(self, text):
         from tkinter import messagebox  #pylint: disable=import-outside-toplevel
+        self.root.attributes('-fullscreen', False)
         self.root.deiconify()
         messagebox.showerror('DR2 Tournament', text)
         self.root.quit()
@@ -204,6 +262,8 @@ class PromptWindow():  #pylint: disable=too-many-instance-attributes
         self._setCanStart(canStart)
 
     def _start(self):
+        if self.counting_down:
+            return
         if self.lookup_job is not None:
             self.root.after_cancel(self.lookup_job)
             self._lookup()
@@ -211,11 +271,30 @@ class PromptWindow():  #pylint: disable=too-many-instance-attributes
             self.root.bell()
             return
 
+        info = self.session.lookup(self.name.get())
+        self.go_name.configure(text=f"{info['name']} · attempt {info['used'] + 1}/{info['max']}" if info else '')
+        self.counting_down = True
+        self._showPanel(self.go_panel)
+        self._present()
+        self._countdown(time.monotonic() + self.start_delay)
+
+    def _countdown(self, endsAt):
+        if not self.counting_down:
+            return  # cancelled, e.g. the stage was left meanwhile
+        remaining = endsAt - time.monotonic()
+        if remaining > 0:
+            self.countdown.configure(text=str(math.ceil(remaining)))
+            self.root.after(max(1, min(COUNTDOWN_TICK_MS, int(remaining * 1000))), self._countdown, endsAt)
+            return
+
+        self.counting_down = False
+        self.countdown.configure(text='')
         self.root.withdraw()
         self.root.update()
         error = self.session.start(self.name.get())
         if error is not None:
-            self.root.deiconify()
+            self._showPanel(self.panel)
+            self._present()
             self._setStatus(error, WARNING)
             self._setCanStart(False)
 
