@@ -178,3 +178,102 @@ class TournamentDatabase():
             entry['used'] = sum(1 for a in entry['attempts'] if a is not None)
 
         return ordered
+
+    # --- administration ---
+
+    def players(self):
+        with closing(self._connect()) as conn:
+            rows = conn.execute('SELECT p.id, p.name, COUNT(r.id) AS runs FROM players p '
+                                'LEFT JOIN results r ON r.player_id = p.id '
+                                'GROUP BY p.id ORDER BY p.name COLLATE NOCASE').fetchall()
+        return [dict(row) for row in rows]
+
+    def runs(self, track=None, car=None):
+        '''All runs, optionally for one track/car combination, by player and attempt.'''
+        query = ('SELECT r.id, r.player_id, p.name, r.track, r.car, r.attempt, r.time, r.status, r.note, r.recorded_at '
+                 'FROM results r JOIN players p ON p.id = r.player_id')
+        args = ()
+        if track is not None:
+            query += ' WHERE r.track = ? AND r.car = ?'
+            args = (track, car)
+        query += ' ORDER BY r.track, r.car, p.name COLLATE NOCASE, r.attempt'
+        with closing(self._connect()) as conn:
+            return [dict(row) for row in conn.execute(query, args).fetchall()]
+
+    @staticmethod
+    def _renumber(conn, playerId, track, car):
+        # ascending, so each new number is free by the time it is assigned
+        rows = conn.execute('SELECT id, attempt FROM results WHERE player_id = ? AND track = ? AND car = ? '
+                            'ORDER BY attempt, recorded_at', (playerId, track, car)).fetchall()
+        for number, row in enumerate(rows, start=1):
+            if row['attempt'] != number:
+                conn.execute('UPDATE results SET attempt = ? WHERE id = ?', (number, row['id']))
+
+    def deleteRun(self, runId):
+        '''Removes a run; later attempts of that player move up, so the attempt becomes available again.'''
+        with closing(self._connect()) as conn:
+            with conn:
+                row = conn.execute('SELECT player_id, track, car FROM results WHERE id = ?', (runId,)).fetchone()
+                if row is None:
+                    return False
+                conn.execute('DELETE FROM results WHERE id = ?', (runId,))
+                self._renumber(conn, row['player_id'], row['track'], row['car'])
+        return True
+
+    def updateRun(self, runId, laptime, status, note=None):
+        if status not in (FINISHED, DNF):
+            raise ValueError(f'Unknown status {status}')
+        if status == FINISHED and (laptime is None or laptime <= 0):
+            raise ValueError('A finished run needs a time')
+        with closing(self._connect()) as conn:
+            with conn:
+                cursor = conn.execute('UPDATE results SET time = ?, status = ?, note = ? WHERE id = ?',
+                                      (round(laptime, 3) if status == FINISHED else None, status, note or None, runId))
+        return cursor.rowcount == 1
+
+    def renamePlayer(self, playerId, newName):
+        if not nameKey(newName):
+            raise ValueError('Empty nickname')
+        with closing(self._connect()) as conn:
+            with conn:
+                other = self._findPlayer(conn, newName)
+                if other is not None and other['id'] != playerId:
+                    raise ValueError(f"The nickname {other['name']} is already taken")
+                cursor = conn.execute('UPDATE players SET name = ?, name_key = ? WHERE id = ?',
+                                      (cleanName(newName), nameKey(newName), playerId))
+        return cursor.rowcount == 1
+
+    def deletePlayer(self, playerId):
+        with closing(self._connect()) as conn:
+            with conn:
+                conn.execute('DELETE FROM results WHERE player_id = ?', (playerId,))
+                cursor = conn.execute('DELETE FROM players WHERE id = ?', (playerId,))
+        return cursor.rowcount == 1
+
+    def deleteCombo(self, track, car):
+        with closing(self._connect()) as conn:
+            with conn:
+                cursor = conn.execute('DELETE FROM results WHERE track = ? AND car = ?', (track, car))
+                conn.execute('DELETE FROM players WHERE id NOT IN (SELECT player_id FROM results)')
+        return cursor.rowcount
+
+    def backup(self, path):
+        '''Consistent copy of the database, safe while it is in use.'''
+        with closing(self._connect()) as source, closing(sqlite3.connect(path)) as target:
+            source.backup(target)
+
+
+def parseTime(text):
+    '''Parses "m:ss.mmm", "ss.mmm" or "h:mm:ss.mmm" into seconds.'''
+    text = (text or '').strip().replace(',', '.')
+    if not text:
+        raise ValueError('Enter a time')
+    seconds = 0.0
+    try:
+        for part in text.split(':'):
+            seconds = seconds * 60 + float(part)
+    except ValueError:
+        raise ValueError(f'Cannot read the time "{text}", use e.g. 3:07.654') from None
+    if seconds <= 0:
+        raise ValueError('The time must be positive')
+    return seconds

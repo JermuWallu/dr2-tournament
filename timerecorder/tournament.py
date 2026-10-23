@@ -68,6 +68,19 @@ def startLeaderboard(database, host, port):
     thread = threading.Thread(target=serve, args=(database, host, port), name='leaderboard', daemon=True)
     thread.start()
 
+def startAdminPortal(database, settings):
+    from .adminPortal import serve, findFreePort  #pylint: disable=import-outside-toplevel
+    host = settings['leaderboard_host']
+    try:
+        port = findFreePort(host, settings['admin_port'])
+    except OSError as exc:
+        logger.error('Admin portal not started: %s', exc)
+        return
+    thread = threading.Thread(target=serve, args=(database, settings['admin_passcode'], host, port),
+                              name='admin', daemon=True)
+    thread.start()
+    logger.info('Admin portal: http://%s:%s', localAddress(), port)
+
 def startTelemetry(approot, session, bridge):
     '''Runs the UDP receiver on its own thread. SQLite objects must be created on the thread using them.'''
 
@@ -113,6 +126,8 @@ def main():
     url = f'http://{localAddress()}:{port}'
     startLeaderboard(database, settings['leaderboard_host'], port)
     logger.info('Leaderboard: %s', url)
+
+    startAdminPortal(database, settings)
 
     startTelemetry(approot, session, bridge)
 

@@ -29,6 +29,8 @@ TOURNAMENT_DEFAULTS = {
     'leaderboard_port': 5000,
     'prompt_mode': 'fullscreen',
     'start_delay_seconds': 2,
+    'admin_passcode': 'jermu',
+    'admin_port': 6969,
 }
 
 TELEMETRY_SERVER = 'telemetry_server'
@@ -141,6 +143,8 @@ class Config(dict):  #pylint: disable=too-many-instance-attributes
             'leaderboard_port': int(settings['leaderboard_port']),
             'prompt_mode': str(settings['prompt_mode']),
             'start_delay_seconds': float(settings['start_delay_seconds']),
+            'admin_passcode': str(settings['admin_passcode']),
+            'admin_port': int(settings['admin_port']),
         }
 
     def load(self):

@@ -22,6 +22,18 @@ On first start, the tool creates `dirtrally-lb.db` (cars and tracks) from `resou
 
 The leaderboard can also run on its own: `python -m timerecorder.leaderboard tournament.db 5000`.
 
+### Admin portal
+
+The console shows the admin address, e.g. `http://192.168.1.20:6969` (port 6969, or the next free one). Log in with `admin_passcode` from `config.yml` (default `jermu`). In the portal you can:
+
+- edit a run's status, time (`m:ss.mmm`) or note, or delete it. Later attempts move up, so a deleted attempt can be driven again.
+- add a run by hand (counts as the player's next attempt)
+- rename or delete players
+- delete all runs of a track/car combination
+- download a backup of `tournament.db`
+
+Anyone on the LAN who knows the passcode can change results, so change the default passcode before the event. Logins reset when the program restarts. It also runs on its own: `python -m timerecorder.adminPortal tournament.db 6969 <passcode>`.
+
 ### Rules as implemented
 
 | Situation | What is recorded |
@@ -48,6 +60,8 @@ tournament:
   leaderboard_port: 5000
   prompt_mode: fullscreen    # or 'centered': a window in the middle of the main screen
   start_delay_seconds: 2     # 'HYVÄÄ RALLIA!' countdown after Start before the game resumes
+  admin_passcode: jermu
+  admin_port: 6969           # the next free port is used if taken
 ```
 
 ### Check on your PC before the event
