@@ -304,10 +304,26 @@ class TournamentDatabase():
                     conn.execute('DELETE FROM settings WHERE key IN (?, ?)', (ACTIVE_TRACK, ACTIVE_CAR))
         return cursor.rowcount
 
+    def bestTime(self, track, car):
+        '''Fastest finished time on a track/car, or None.'''
+        with closing(self._connect()) as conn:
+            row = conn.execute("SELECT MIN(time) FROM results WHERE track = ? AND car = ? AND status = 'FINISHED'",
+                               (track, car)).fetchone()
+        return row[0]
+
+    def restoreFrom(self, path):
+        '''Replaces all contents with those of another database file (online, other connections stay valid).'''
+        with closing(sqlite3.connect(path)) as source, closing(self._connect()) as target:
+            source.backup(target)
+        with closing(self._connect()) as conn:
+            conn.execute('PRAGMA journal_mode=WAL;')  # backups are stored in rollback-journal mode
+            conn.executescript(SCHEMA)  # an older backup may lack newer tables
+
     def backup(self, path):
         '''Consistent copy of the database, safe while it is in use.'''
         with closing(self._connect()) as source, closing(sqlite3.connect(path)) as target:
             source.backup(target)
+            target.execute('PRAGMA journal_mode=DELETE;')  # a single self-contained file, no -wal/-shm
 
 
 def parseTime(text):

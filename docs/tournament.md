@@ -32,7 +32,18 @@ The console shows the admin address, e.g. `http://192.168.1.20:6969` (port 6969,
 - add a run by hand (counts as the player's next attempt)
 - rename or delete players
 - delete all runs of a track/car combination
-- download a backup of `tournament.db`
+- download the current `tournament.db`
+- see, view (read-only), download and restore backups, or make one now
+
+### Backups
+
+The `backups` folder next to `tournament.db` holds the newest 3 copies (`backup_keep`). A copy is made:
+- every 15 minutes (`backup_interval_minutes`), skipped when nothing changed since the newest copy
+- whenever a run sets a new best time on the tournament leaderboard
+- right before a restore, so a restore can be undone
+- when you press **Back up now** in the admin portal
+
+**Restore** replaces all live data (runs, players, tournament setup) with the backup. It works while the tournament is running. The previous state is kept as a "before a restore" backup.
 
 Anyone on the LAN who knows the passcode can change results, so change the default passcode before the event. Logins reset when the program restarts. It also runs on its own: `python -m timerecorder.adminPortal tournament.db 6969 <passcode>`.
 
@@ -65,6 +76,8 @@ tournament:
   start_delay_seconds: 2     # 'HYVÄÄ RALLIA!' countdown after Start before the game resumes
   admin_passcode: jermu
   admin_port: 6969           # the next free port is used if taken
+  backup_keep: 3
+  backup_interval_minutes: 15
 ```
 
 ### Check on your PC before the event

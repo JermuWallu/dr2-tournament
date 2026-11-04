@@ -16,6 +16,7 @@ try:
     from .nicknamePrompt import PromptWindow, TkUiBridge
     from .receiver import Receiver
     from .statsProcessor import StatsProcessor
+    from .tournamentBackups import BackupManager
     from .tournamentDatabase import TournamentDatabase
     from .tournamentSession import TournamentSession
 except ImportError:
@@ -24,11 +25,13 @@ except ImportError:
     from timerecorder.nicknamePrompt import PromptWindow, TkUiBridge  # @Reimport
     from timerecorder.receiver import Receiver  # @Reimport
     from timerecorder.statsProcessor import StatsProcessor  # @Reimport
+    from timerecorder.tournamentBackups import BackupManager  # @Reimport
     from timerecorder.tournamentDatabase import TournamentDatabase  # @Reimport
     from timerecorder.tournamentSession import TournamentSession  # @Reimport
 
 LOGFILE = 'tournament.log'
 TOURNAMENT_DB = 'tournament.db'
+BACKUP_FOLDER = 'backups'
 BASE_DB = 'dirtrally-lb.db'
 
 logger = log.getLogger('timerecorder.tournament')
@@ -68,7 +71,7 @@ def startLeaderboard(database, host, port):
     thread = threading.Thread(target=serve, args=(database, host, port), name='leaderboard', daemon=True)
     thread.start()
 
-def startAdminPortal(database, settings):
+def startAdminPortal(database, settings, backups):
     from .adminPortal import serve, findFreePort  #pylint: disable=import-outside-toplevel
     host = settings['leaderboard_host']
     try:
@@ -76,7 +79,7 @@ def startAdminPortal(database, settings):
     except OSError as exc:
         logger.error('Admin portal not started: %s', exc)
         return
-    thread = threading.Thread(target=serve, args=(database, settings['admin_passcode'], host, port),
+    thread = threading.Thread(target=serve, args=(database, settings['admin_passcode'], host, port, backups),
                               name='admin', daemon=True)
     thread.start()
     logger.info('Admin portal: http://%s:%s', localAddress(), port)
@@ -127,7 +130,14 @@ def main():
     startLeaderboard(database, settings['leaderboard_host'], port)
     logger.info('Leaderboard: %s', url)
 
-    startAdminPortal(database, settings)
+    backups = BackupManager(database, os.path.join(approot, BACKUP_FOLDER),
+                            settings['backup_keep'], settings['backup_interval_minutes'])
+    session.on_new_best = backups.newBest
+    backups.startSchedule()
+    logger.info('Backups: %s (newest %s kept, every %g min and on new best times)',
+                os.path.join(approot, BACKUP_FOLDER), settings['backup_keep'], settings['backup_interval_minutes'])
+
+    startAdminPortal(database, settings, backups)
 
     startTelemetry(approot, session, bridge)
 

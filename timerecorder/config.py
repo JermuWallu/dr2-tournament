@@ -31,6 +31,8 @@ TOURNAMENT_DEFAULTS = {
     'start_delay_seconds': 2,
     'admin_passcode': 'jermu',
     'admin_port': 6969,
+    'backup_keep': 3,
+    'backup_interval_minutes': 15,
 }
 
 TELEMETRY_SERVER = 'telemetry_server'
@@ -145,6 +147,8 @@ class Config(dict):  #pylint: disable=too-many-instance-attributes
             'start_delay_seconds': float(settings['start_delay_seconds']),
             'admin_passcode': str(settings['admin_passcode']),
             'admin_port': int(settings['admin_port']),
+            'backup_keep': int(settings['backup_keep']),
+            'backup_interval_minutes': float(settings['backup_interval_minutes']),
         }
 
     def load(self):

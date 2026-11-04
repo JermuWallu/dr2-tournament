@@ -58,6 +58,7 @@ class TournamentSession():  #pylint: disable=too-many-instance-attributes
         self.auto_pause = autoPause
         self.clock = clock
 
+        self.on_new_best = None  # called after a run sets the best time on the tournament leaderboard
         self.lock = threading.RLock()
         self.state = IDLE
         self.track = None
@@ -190,6 +191,7 @@ class TournamentSession():  #pylint: disable=too-many-instance-attributes
     def _record(self, laptime, status, note):
         try:
             onLeaderboard = self.database.isActiveCombo(self.track, self.car)
+            previousBest = self.database.bestTime(self.track, self.car)
             attempt = self.database.recordResult(self.player, self.track, self.car, laptime, status, note)
             result = formatTime(laptime) if status == FINISHED else f'DNF ({note})'
             text = f'{self.player} - attempt {attempt}: {result}'
@@ -197,6 +199,11 @@ class TournamentSession():  #pylint: disable=too-many-instance-attributes
                 text += ' (other track/car, not on the leaderboard)'
             logger.info('RESULT %s', text)
             self.ui.showResult(text)
+
+            newBest = status == FINISHED and onLeaderboard and (previousBest is None or round(laptime, 3) < previousBest)
+            if newBest and self.on_new_best is not None:
+                logger.info('New best time on the leaderboard')
+                self.on_new_best()
         except AttemptsExhausted as exc:
             logger.error('Result not recorded: %s', exc)
         except Exception:  #pylint: disable=broad-except

@@ -22,6 +22,7 @@ from functools import wraps
 from flask import Flask, abort, flash, redirect, render_template_string, request, send_file, session, url_for
 
 from .leaderboard import standingsRows
+from .tournamentBackups import BackupManager, MANUAL, describeAge
 from .tournamentDatabase import TournamentDatabase, AttemptsExhausted, FINISHED, DNF, formatTime, parseTime
 
 DEFAULT_PORT = 6969
@@ -37,7 +38,7 @@ def findFreePort(host, start=DEFAULT_PORT, tries=50):
                 continue
     raise OSError(f'No free port between {start} and {start + tries - 1}')
 
-def createApp(database, passcode):  #pylint: disable=too-many-locals,too-many-statements
+def createApp(database, passcode, backups=None):  #pylint: disable=too-many-locals,too-many-statements
     app = Flask(__name__)
     app.secret_key = secrets.token_hex(32)  # new on every start, which logs everyone out
     app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Strict')
@@ -91,8 +92,12 @@ def createApp(database, passcode):  #pylint: disable=too-many-locals,too-many-st
         for run in runs:
             run['time_text'] = formatTime(run['time']) if run['time'] is not None else ''
             run['recorded_text'] = datetime.fromtimestamp(run['recorded_at']).strftime('%d.%m. %H:%M:%S')
+        backupList = backupRows()
         return render_template_string(MAIN_PAGE, css=CSS, combos=combos, selected=selected, runs=runs,
-                                      active=active, standings=standings,
+                                      active=active, standings=standings, backups=backupList,
+                                      backups_enabled=backups is not None,
+                                      backup_keep=backups.keep if backups else 0,
+                                      backup_interval=f'{backups.interval / 60:g}' if backups else '',
                                       players=database.players(), max_attempts=database.max_attempts,
                                       csrf=session['csrf'], FINISHED=FINISHED, DNF=DNF)
 
@@ -175,6 +180,74 @@ def createApp(database, passcode):  #pylint: disable=too-many-locals,too-many-st
         flash(f'Deleted {count} runs', 'ok')
         return redirect(url_for('index'))
 
+    def backupRows():
+        if backups is None:
+            return []
+        rows = backups.list()
+        for row in rows:
+            row['age'] = describeAge(row['created'])
+            try:
+                info = backups.summary(row['name'])
+            except Exception:  #pylint: disable=broad-except
+                info = {'runs': None, 'players': None, 'active': None, 'leader': None, 'best': None}
+            row.update(info)
+            row['best_text'] = formatTime(info['best']) if info['best'] is not None else ''
+        return rows
+
+    def needBackups():
+        if backups is None:
+            abort(404)
+
+    @app.post('/backups/create')
+    @loggedIn
+    def createBackup():
+        needBackups()
+        flash(f'Backup {backups.create(MANUAL)} created', 'ok')
+        return redirect(url_for('index') + '#backups')
+
+    @app.get('/backups/<name>')
+    @loggedIn
+    def viewBackup(name):
+        needBackups()
+        try:
+            view, cleanup = backups.open(name)
+        except FileNotFoundError:
+            abort(404)
+        try:
+            info = next(b for b in backups.list() if b['name'] == name)
+            active = view.activeCombo()
+            runs = view.runs()
+            for run in runs:
+                run['time_text'] = formatTime(run['time']) if run['time'] is not None else 'DNF'
+                run['recorded_text'] = datetime.fromtimestamp(run['recorded_at']).strftime('%d.%m. %H:%M:%S')
+            return render_template_string(BACKUP_PAGE, css=CSS, info=info, active=active, runs=runs,
+                                          standings=standingsRows(view, *active) if active else [],
+                                          players=view.players(), max_attempts=view.max_attempts,
+                                          csrf=session['csrf'])
+        finally:
+            cleanup()
+
+    @app.get('/backups/<name>/download')
+    @loggedIn
+    def downloadBackup(name):
+        needBackups()
+        try:
+            return send_file(backups.path(name), as_attachment=True, download_name=name,
+                             mimetype='application/vnd.sqlite3')
+        except FileNotFoundError:
+            abort(404)
+
+    @app.post('/backups/<name>/restore')
+    @loggedIn
+    def restoreBackup(name):
+        needBackups()
+        try:
+            safety = backups.restore(name)
+        except FileNotFoundError:
+            abort(404)
+        flash(f'Restored {name}. The state before the restore was saved as {safety}.', 'ok')
+        return redirect(url_for('index'))
+
     @app.get('/backup')
     @loggedIn
     def backup():
@@ -189,9 +262,9 @@ def createApp(database, passcode):  #pylint: disable=too-many-locals,too-many-st
 
     return app
 
-def serve(database, passcode, host='0.0.0.0', port=DEFAULT_PORT):
+def serve(database, passcode, host='0.0.0.0', port=DEFAULT_PORT, backups=None):  #pylint: disable=too-many-arguments
     logging.getLogger('werkzeug').setLevel(logging.WARNING)
-    createApp(database, passcode).run(host=host, port=port, debug=False, use_reloader=False, threaded=True)
+    createApp(database, passcode, backups).run(host=host, port=port, debug=False, use_reloader=False, threaded=True)
 
 CSS = '''
 :root { --bg:#101216; --panel:#181b21; --row:#1d2129; --line:#2a2f39; --text:#f2f4f8; --muted:#8b93a3;
@@ -249,7 +322,8 @@ MAIN_PAGE = '''<!doctype html>
   <div><div class="kicker">DR2 TOURNAMENT · ADMIN</div>
     <h1>Tournament admin</h1></div>
   <div class="row">
-    <a class="button ghost" href="{{ url_for('backup') }}">Download backup</a>
+    <a class="button ghost" href="#backups">Backups</a>
+    <a class="button ghost" href="{{ url_for('backup') }}">Download database</a>
     <form class="inline" method="post" action="{{ url_for('logout') }}"><input type="hidden" name="csrf" value="{{ csrf }}">
       <button class="ghost">Log out</button></form>
   </div>
@@ -371,6 +445,38 @@ MAIN_PAGE = '''<!doctype html>
   {% endfor %}
 </table></div>
 
+{% if backups_enabled %}
+<h2 id="backups">Backups</h2>
+<div class="card">
+  <div class="row" style="justify-content:space-between">
+    <span class="muted">The newest {{ backup_keep }} copies are kept. A copy is made every {{ backup_interval }} minutes (only if something changed), on every new best time, and before a restore.</span>
+    <form class="inline" method="post" action="{{ url_for('createBackup') }}"><input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="ghost">Back up now</button></form>
+  </div>
+  <div class="scroll" style="margin-top:10px"><table>
+    <tr><th>Created</th><th>Reason</th><th>Runs</th><th>Players</th><th>Leader</th><th></th></tr>
+    {% for b in backups %}
+    <tr>
+      <td>{{ b.created_text }} <span class="muted">· {{ b.age }}</span></td>
+      <td>{{ b.reason_text }}</td>
+      <td>{{ b.runs if b.runs is not none else '?' }}</td>
+      <td>{{ b.players if b.players is not none else '?' }}</td>
+      <td>{% if b.leader %}{{ b.leader }} <span class="muted">{{ b.best_text }}</span>{% else %}<span class="muted">–</span>{% endif %}</td>
+      <td>
+        <a class="button ghost" href="{{ url_for('viewBackup', name=b.name) }}">View</a>
+        <a class="button ghost" href="{{ url_for('downloadBackup', name=b.name) }}">Download</a>
+        <form class="inline" method="post" action="{{ url_for('restoreBackup', name=b.name) }}"
+              onsubmit='return confirm({{ ("Restore the backup from " ~ b.created_text ~ "? All current data is replaced. The current state is backed up first.")|tojson }})'>
+          <input type="hidden" name="csrf" value="{{ csrf }}"><button class="danger">Restore</button></form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" class="muted">No backups yet.</td></tr>
+    {% endfor %}
+  </table></div>
+</div>
+{% endif %}
+
 {% if selected %}
 <h2>Danger zone</h2>
 <form class="card row" method="post" action="{{ url_for('deleteCombo') }}"
@@ -383,9 +489,55 @@ MAIN_PAGE = '''<!doctype html>
 {% endif %}
 </main></body></html>'''
 
+BACKUP_PAGE = '''<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Backup · Tournament Admin</title><style>{{ css }}</style></head>
+<body><main>
+<div class="top">
+  <div><div class="kicker">DR2 TOURNAMENT · ADMIN · BACKUP</div>
+    <h1>{{ info.created_text }}</h1>
+    <div class="muted">{{ info.reason_text }} · {{ info.name }}</div></div>
+  <div class="row">
+    <a class="button ghost" href="{{ url_for('index') }}#backups">Back</a>
+    <a class="button ghost" href="{{ url_for('downloadBackup', name=info.name) }}">Download</a>
+    <form class="inline" method="post" action="{{ url_for('restoreBackup', name=info.name) }}"
+          onsubmit='return confirm({{ ("Restore this backup? All current data is replaced. The current state is backed up first.")|tojson }})'>
+      <input type="hidden" name="csrf" value="{{ csrf }}"><button class="danger">Restore this backup</button></form>
+  </div>
+</div>
+<div class="flash ok" style="background:#1d2129;color:var(--muted)">Read-only view of the backup. Nothing here changes the live tournament until you restore.</div>
+
+<h2>Tournament setup</h2>
+<div class="card">{% if active %}<strong>{{ active[0] }}</strong> · {{ active[1] }}{% else %}<span class="muted">Not set</span>{% endif %}</div>
+
+{% if active %}
+<h2>Leaderboard</h2>
+<div class="card scroll"><table>
+  <tr><th>Pos</th><th>Driver</th><th>Best</th><th>Gap</th>{% for n in range(1, max_attempts + 1) %}<th>Run {{ n }}</th>{% endfor %}</tr>
+  {% for r in standings %}
+  <tr><td>{{ r.position or '–' }}</td><td><strong>{{ r.name }}</strong></td>
+    <td class="{{ 'dnf' if r.best == 'DNF' else '' }}"><strong>{{ r.best }}</strong></td><td class="muted">{{ r.gap }}</td>
+    {% for a in r.attempts %}<td class="{{ 'dnf' if a.kind == 'dnf' else '' }}">{{ a.text or '–' }}</td>{% endfor %}</tr>
+  {% else %}<tr><td colspan="6" class="muted">No runs.</td></tr>{% endfor %}
+</table></div>
+{% endif %}
+
+<h2>All runs ({{ runs|length }})</h2>
+<div class="card scroll"><table>
+  <tr><th>Track · car</th><th>Player</th><th>Attempt</th><th>Time</th><th>Note</th><th>Recorded</th></tr>
+  {% for r in runs %}
+  <tr><td class="muted">{{ r.track }} · {{ r.car }}</td><td><strong>{{ r.name }}</strong></td><td>{{ r.attempt }}/{{ max_attempts }}</td>
+    <td class="{{ 'dnf' if r.status == 'DNF' else '' }}">{{ r.time_text }}</td><td class="muted">{{ r.note or '' }}</td>
+    <td class="muted">{{ r.recorded_text }}</td></tr>
+  {% else %}<tr><td colspan="6" class="muted">No runs.</td></tr>{% endfor %}
+</table></div>
+</main></body></html>'''
+
 if __name__ == '__main__':
     dbPath = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.getcwd(), 'tournament.db')
     adminPort = findFreePort('0.0.0.0', int(sys.argv[2]) if len(sys.argv) > 2 else DEFAULT_PORT)
     code = sys.argv[3] if len(sys.argv) > 3 else 'jermu'
     print(f'Admin portal for {dbPath} on http://localhost:{adminPort}')
-    serve(TournamentDatabase(dbPath), code, port=adminPort)
+    standalone = TournamentDatabase(dbPath)
+    serve(standalone, code, port=adminPort,
+          backups=BackupManager(standalone, os.path.join(os.path.dirname(os.path.abspath(dbPath)), 'backups')))
