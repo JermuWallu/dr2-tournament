@@ -36,7 +36,7 @@ def describe(element, lookupName, unknown):
     return ' / '.join(lookupName(candidate) for candidate in element)
 
 class NullUi():
-    def showPrompt(self, track, car):
+    def showPrompt(self, track, car, tournamentSetup=None):
         pass
 
     def hidePrompt(self):
@@ -101,7 +101,13 @@ class TournamentSession():  #pylint: disable=too-many-instance-attributes
                 self.game.pause()
             self.pause_check_at = self.clock() + PAUSE_CHECK_DELAY_SECONDS
 
-            self.ui.showPrompt(self.track, self.car)
+            # the tournament (track, car) when this stage is something else, so the driver can be warned
+            active = self.database.activeCombo()
+            mismatch = active if active is not None and active != (self.track, self.car) else None
+            if mismatch:
+                logger.warning('Stage is not the tournament setup (%s | %s), time will not be on the leaderboard', *mismatch)
+
+            self.ui.showPrompt(self.track, self.car, mismatch)
 
     def stageFinished(self, laptime, _track=None, _car=None):
         with self.lock:
@@ -183,9 +189,12 @@ class TournamentSession():  #pylint: disable=too-many-instance-attributes
 
     def _record(self, laptime, status, note):
         try:
+            onLeaderboard = self.database.isActiveCombo(self.track, self.car)
             attempt = self.database.recordResult(self.player, self.track, self.car, laptime, status, note)
             result = formatTime(laptime) if status == FINISHED else f'DNF ({note})'
             text = f'{self.player} - attempt {attempt}: {result}'
+            if not onLeaderboard:
+                text += ' (other track/car, not on the leaderboard)'
             logger.info('RESULT %s', text)
             self.ui.showResult(text)
         except AttemptsExhausted as exc:

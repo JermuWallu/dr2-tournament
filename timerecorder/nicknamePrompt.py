@@ -20,6 +20,7 @@ POLL_MS = 100
 COLORS = {
     'bg': '#16181d', 'panel': '#1f232b', 'text': '#f2f4f8', 'muted': '#9aa3b2',
     'accent': '#ffb000', 'ok': '#5fd18b', 'warning': '#ff6b5b', 'info': '#9aa3b2',
+    'warning_bg': '#3a1b18',
     'button': '#ffb000', 'button_text': '#16181d', 'disabled': '#4a505c',
 }
 
@@ -48,14 +49,21 @@ def describeLookup(info):
     return '\n'.join([header] + lines + [footer]), OK, True
 
 
+def setupWarning(tournamentSetup):
+    track, car = tournamentSetup
+    return ('⚠ This is not the tournament track and car.\n'
+            f'Tournament: {track} · {car}\n'
+            'Your time is saved, but it will not appear on the current leaderboard.')
+
+
 class TkUiBridge():
     '''Thread-safe UI facade handed to TournamentSession.'''
 
     def __init__(self):
         self.queue = queue.Queue()
 
-    def showPrompt(self, track, car):
-        self.queue.put(('showPrompt', (track, car)))
+    def showPrompt(self, track, car, tournamentSetup=None):
+        self.queue.put(('showPrompt', (track, car, tournamentSetup)))
 
     def hidePrompt(self):
         self.queue.put(('hidePrompt', ()))
@@ -113,31 +121,38 @@ class PromptWindow():  #pylint: disable=too-many-instance-attributes
         self.car_label = label(panel, '', 13, COLORS['muted'])
         self.car_label.grid(row=2, column=0, sticky='w')
 
-        label(panel, 'Nickname', 11, COLORS['muted']).grid(row=3, column=0, sticky='w', pady=(size(20), size(4)))
+        # shown only when the loaded stage is not the tournament track and car
+        self.setup_warning = tk.Label(panel, text='', bg=COLORS['warning_bg'], fg=COLORS['warning'],
+                                      font=('Segoe UI', size(12), 'bold'), justify='left', anchor='w',
+                                      wraplength=size(440), padx=size(12), pady=size(10))
+        self.spacing = size(14)
+        self.off_setup = False
+
+        label(panel, 'Nickname', 11, COLORS['muted']).grid(row=4, column=0, sticky='w', pady=(size(20), size(4)))
         self.name = tk.StringVar()
         self.name.trace_add('write', self._onType)
         self.entry = tk.Entry(panel, textvariable=self.name, font=('Segoe UI', size(20)), width=22,
                               bg=COLORS['panel'], fg=COLORS['text'], insertbackground=COLORS['text'],
                               relief='flat', highlightthickness=2, highlightcolor=COLORS['accent'],
                               highlightbackground=COLORS['panel'])
-        self.entry.grid(row=4, column=0, sticky='we', ipady=size(6))
+        self.entry.grid(row=5, column=0, sticky='we', ipady=size(6))
         self.entry.bind('<Return>', lambda _event: self._start())
 
         self.status = label(panel, '', 12, COLORS['info'])
         self.status.configure(wraplength=size(420))
-        self.status.grid(row=5, column=0, sticky='w', pady=(size(12), 0))
+        self.status.grid(row=6, column=0, sticky='w', pady=(size(12), 0))
 
         self.button = tk.Button(panel, text='START', command=self._start, font=('Segoe UI', size(14), 'bold'),
                                 bg=COLORS['button'], fg=COLORS['button_text'], activebackground=COLORS['accent'],
                                 relief='flat', padx=size(24), pady=size(8), disabledforeground=COLORS['muted'])
-        self.button.grid(row=6, column=0, sticky='we', pady=(size(18), 0))
+        self.button.grid(row=7, column=0, sticky='we', pady=(size(18), 0))
 
         self.pause_label = label(panel, '', 9, COLORS['muted'])
-        self.pause_label.grid(row=7, column=0, sticky='w', pady=(size(10), 0))
+        self.pause_label.grid(row=8, column=0, sticky='w', pady=(size(10), 0))
 
         footer = 'Last result: -' if leaderboardUrl is None else f'Leaderboard: {leaderboardUrl}'
         self.footer = label(panel, footer, 9, COLORS['muted'])
-        self.footer.grid(row=8, column=0, sticky='w', pady=(size(4), 0))
+        self.footer.grid(row=9, column=0, sticky='w', pady=(size(4), 0))
 
         # --- "hyvää rallia" countdown panel ---
         goScale = 2.0 if self.mode == FULLSCREEN else 1.0
@@ -145,6 +160,9 @@ class PromptWindow():  #pylint: disable=too-many-instance-attributes
         self.go_name = tk.Label(self.go_panel, text='', bg=COLORS['bg'], fg=COLORS['muted'],
                                 font=('Segoe UI', int(18 * goScale)))
         self.go_name.pack()
+        self.go_warning = tk.Label(self.go_panel, text='', bg=COLORS['bg'], fg=COLORS['warning'],
+                                   font=('Segoe UI', int(14 * goScale), 'bold'))
+        self.go_warning.pack()
         tk.Label(self.go_panel, text=GO_TEXT, bg=COLORS['bg'], fg=COLORS['accent'],
                  font=('Segoe UI', int(54 * goScale), 'bold')).pack()
         self.countdown = tk.Label(self.go_panel, text='', bg=COLORS['bg'], fg=COLORS['text'],
@@ -199,10 +217,16 @@ class PromptWindow():  #pylint: disable=too-many-instance-attributes
             pass
         self.root.after(POLL_MS, self._poll)
 
-    def _cmd_showPrompt(self, track, car):
+    def _cmd_showPrompt(self, track, car, tournamentSetup=None):
         self.counting_down = False
         self.track_label.configure(text=track)
         self.car_label.configure(text=car)
+        self.off_setup = tournamentSetup is not None
+        if self.off_setup:
+            self.setup_warning.configure(text=setupWarning(tournamentSetup))
+            self.setup_warning.grid(row=3, column=0, sticky='we', pady=(self.spacing, 0))
+        else:
+            self.setup_warning.grid_remove()
         self.name.set('')
         self._setStatus('', INFO)
         self.pause_label.configure(text='')
@@ -273,6 +297,8 @@ class PromptWindow():  #pylint: disable=too-many-instance-attributes
 
         info = self.session.lookup(self.name.get())
         self.go_name.configure(text=f"{info['name']} · attempt {info['used'] + 1}/{info['max']}" if info else '')
+        self.go_warning.configure(text='Not the tournament track/car: this time won\'t be on the leaderboard'
+                                  if self.off_setup else '')
         self.counting_down = True
         self._showPanel(self.go_panel)
         self._present()

@@ -34,7 +34,14 @@ CREATE TABLE IF NOT EXISTS results (
     UNIQUE (player_id, track, car, attempt)
 );
 CREATE INDEX IF NOT EXISTS results_combo ON results (track, car);
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
 '''
+
+ACTIVE_TRACK = 'active_track'
+ACTIVE_CAR = 'active_car'
 
 class AttemptsExhausted(Exception):
     pass
@@ -123,11 +130,48 @@ class TournamentDatabase():
                     raise AttemptsExhausted(f'{cleanName(name)} has used all {self.max_attempts} attempts')
 
                 attempt = used + 1
+                if self._activeCombo(conn) is None:
+                    # the first run of the tournament defines its track and car
+                    self._setActiveCombo(conn, track, car)
                 conn.execute('INSERT INTO results (player_id, track, car, attempt, time, status, note, recorded_at) '
                              'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
                              (playerId, track, car, attempt, round(laptime, 3) if status == FINISHED else None,
                               status, note, time.time()))
         return attempt
+
+    # --- tournament setup (the track and car the leaderboard shows) ---
+
+    @staticmethod
+    def _activeCombo(conn):
+        rows = dict(conn.execute('SELECT key, value FROM settings WHERE key IN (?, ?)',
+                                 (ACTIVE_TRACK, ACTIVE_CAR)).fetchall())
+        if rows.get(ACTIVE_TRACK) is None or rows.get(ACTIVE_CAR) is None:
+            return None
+        return rows[ACTIVE_TRACK], rows[ACTIVE_CAR]
+
+    @staticmethod
+    def _setActiveCombo(conn, track, car):
+        conn.executemany('INSERT INTO settings (key, value) VALUES (?, ?) '
+                         'ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+                         ((ACTIVE_TRACK, track), (ACTIVE_CAR, car)))
+
+    def activeCombo(self):
+        '''The tournament (track, car), or None until the first run is recorded.'''
+        with closing(self._connect()) as conn:
+            return self._activeCombo(conn)
+
+    def setActiveCombo(self, track, car):
+        with closing(self._connect()) as conn:
+            with conn:
+                if track is None or car is None:
+                    conn.execute('DELETE FROM settings WHERE key IN (?, ?)', (ACTIVE_TRACK, ACTIVE_CAR))
+                else:
+                    self._setActiveCombo(conn, track, car)
+
+    def isActiveCombo(self, track, car):
+        '''True when (track, car) is the tournament setup, or no setup has been chosen yet.'''
+        active = self.activeCombo()
+        return active is None or active == (track, car)
 
     def combos(self):
         '''
@@ -255,6 +299,9 @@ class TournamentDatabase():
             with conn:
                 cursor = conn.execute('DELETE FROM results WHERE track = ? AND car = ?', (track, car))
                 conn.execute('DELETE FROM players WHERE id NOT IN (SELECT player_id FROM results)')
+                if self._activeCombo(conn) == (track, car):
+                    # the next recorded run defines the setup again
+                    conn.execute('DELETE FROM settings WHERE key IN (?, ?)', (ACTIVE_TRACK, ACTIVE_CAR))
         return cursor.rowcount
 
     def backup(self, path):

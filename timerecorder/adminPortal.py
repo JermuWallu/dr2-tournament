@@ -8,6 +8,7 @@ Started by the tournament program on port 6969 (or the next free port), or on it
 '''
 import hmac
 import io
+import json
 import logging
 import os
 import secrets
@@ -20,6 +21,7 @@ from functools import wraps
 
 from flask import Flask, abort, flash, redirect, render_template_string, request, send_file, session, url_for
 
+from .leaderboard import standingsRows
 from .tournamentDatabase import TournamentDatabase, AttemptsExhausted, FINISHED, DNF, formatTime, parseTime
 
 DEFAULT_PORT = 6969
@@ -76,13 +78,21 @@ def createApp(database, passcode):  #pylint: disable=too-many-locals,too-many-st
     @loggedIn
     def index():
         combos = database.combos()
+        active = database.activeCombo()
+        for combo in combos:
+            combo['active'] = active == (combo['track'], combo['car'])
+            combo['key'] = json.dumps([combo['track'], combo['car']])
         track, car = request.args.get('track'), request.args.get('car')
+        if track is None and active is not None:
+            track, car = active
         selected = next((c for c in combos if c['track'] == track and c['car'] == car), combos[0] if combos else None)
         runs = database.runs(selected['track'], selected['car']) if selected else []
+        standings = standingsRows(database, selected['track'], selected['car']) if selected else []
         for run in runs:
             run['time_text'] = formatTime(run['time']) if run['time'] is not None else ''
             run['recorded_text'] = datetime.fromtimestamp(run['recorded_at']).strftime('%d.%m. %H:%M:%S')
         return render_template_string(MAIN_PAGE, css=CSS, combos=combos, selected=selected, runs=runs,
+                                      active=active, standings=standings,
                                       players=database.players(), max_attempts=database.max_attempts,
                                       csrf=session['csrf'], FINISHED=FINISHED, DNF=DNF)
 
@@ -137,6 +147,26 @@ def createApp(database, passcode):  #pylint: disable=too-many-locals,too-many-st
         database.deletePlayer(playerId)
         flash('Player and all their runs deleted', 'ok')
         return backTo(request.form.get('track'), request.form.get('car'))
+
+    @app.post('/setup')
+    @loggedIn
+    def setSetup():
+        choice = request.form.get('combo', '')
+        if choice == 'clear':
+            database.setActiveCombo(None, None)
+            flash('Tournament setup cleared, the next recorded run sets it again', 'ok')
+            return redirect(url_for('index'))
+        try:
+            track, car = json.loads(choice)
+        except (ValueError, TypeError):
+            flash('Choose a track and car', 'error')
+            return redirect(url_for('index'))
+        if not any(c['track'] == track and c['car'] == car for c in database.combos()):
+            flash('That track and car has no runs', 'error')
+            return redirect(url_for('index'))
+        database.setActiveCombo(track, car)
+        flash(f'Tournament setup is now {track} · {car}', 'ok')
+        return redirect(url_for('index', track=track, car=car))
 
     @app.post('/combo/delete')
     @loggedIn
@@ -194,6 +224,8 @@ form.inline { display:inline; margin:0; }
 .flash { padding:10px 14px; border-radius:8px; margin:12px 0; }
 .flash.ok { background:#18301f; color:var(--ok); } .flash.error { background:#3a1b18; color:var(--danger); }
 .dnf { color:var(--danger); font-weight:700; }
+.badge { background:var(--ok); color:#10261a; font-weight:800; font-size:11px; letter-spacing:.1em; padding:3px 7px; border-radius:4px; }
+.setup { font-size:18px; margin-bottom:4px; }
 .login { max-width:340px; margin:18vh auto 0; }
 .login input { width:100%; font-size:18px; padding:10px; margin:12px 0; }
 .login button { width:100%; font-size:16px; padding:10px; }
@@ -215,8 +247,7 @@ MAIN_PAGE = '''<!doctype html>
 <body><main>
 <div class="top">
   <div><div class="kicker">DR2 TOURNAMENT · ADMIN</div>
-    <h1>{{ selected.track if selected else 'No runs yet' }}</h1>
-    <div class="muted">{{ selected.car if selected else '' }}</div></div>
+    <h1>Tournament admin</h1></div>
   <div class="row">
     <a class="button ghost" href="{{ url_for('backup') }}">Download backup</a>
     <form class="inline" method="post" action="{{ url_for('logout') }}"><input type="hidden" name="csrf" value="{{ csrf }}">
@@ -228,18 +259,53 @@ MAIN_PAGE = '''<!doctype html>
   <div class="flash {{ category }}">{{ message }}</div>
 {% endfor %}
 
-{% if combos|length > 1 %}
-<h2>Track &amp; car</h2>
-<div class="row combos">
-  {% for c in combos %}
-  <a class="{{ 'active' if selected and c.track == selected.track and c.car == selected.car else '' }}"
-     href="{{ url_for('index', track=c.track, car=c.car) }}">{{ c.track }} · {{ c.car }} ({{ c.players }})</a>
-  {% endfor %}
+<h2>Tournament setup</h2>
+<div class="card">
+  {% if active %}
+    <div class="setup"><span class="badge">LIVE</span> <strong>{{ active[0] }}</strong> · {{ active[1] }}</div>
+    <div class="muted">The public leaderboard shows only runs on this track and car.</div>
+  {% else %}
+    <div class="setup"><strong>Not set.</strong></div>
+    <div class="muted">The next recorded run sets the tournament track and car.</div>
+  {% endif %}
+  {% if combos %}
+  <form class="row" method="post" action="{{ url_for('setSetup') }}" style="margin-top:12px">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <select name="combo">
+      {% for c in combos %}
+      <option value="{{ c.key }}" {{ 'selected' if c.active else '' }}>{{ c.track }} · {{ c.car }} ({{ c.players }} players)</option>
+      {% endfor %}
+      {% if active %}<option value="clear">Clear: next run sets it</option>{% endif %}
+    </select>
+    <button>Set as tournament setup</button>
+  </form>
+  {% endif %}
 </div>
+
+{% if selected %}
+<h2>Leaderboard</h2>
+<div class="row">
+  <select onchange="location = this.value" aria-label="Leaderboard">
+    {% for c in combos %}
+    <option value="{{ url_for('index', track=c.track, car=c.car) }}"
+      {{ 'selected' if c.track == selected.track and c.car == selected.car else '' }}>
+      {{ '★ ' if c.active else '' }}{{ c.track }} · {{ c.car }} ({{ c.players }})</option>
+    {% endfor %}
+  </select>
+  {% if selected.active %}<span class="badge">LIVE</span>{% else %}<span class="muted">Not the tournament setup, not on the public leaderboard</span>{% endif %}
+</div>
+<div class="card scroll" style="margin-top:10px"><table>
+  <tr><th>Pos</th><th>Driver</th><th>Best</th><th>Gap</th>{% for n in range(1, max_attempts + 1) %}<th>Run {{ n }}</th>{% endfor %}</tr>
+  {% for r in standings %}
+  <tr><td>{{ r.position or '–' }}</td><td><strong>{{ r.name }}</strong></td>
+    <td class="{{ 'dnf' if r.best == 'DNF' else '' }}"><strong>{{ r.best }}</strong></td><td class="muted">{{ r.gap }}</td>
+    {% for a in r.attempts %}<td class="{{ 'dnf' if a.kind == 'dnf' else '' }}">{{ a.text or '–' }}</td>{% endfor %}</tr>
+  {% endfor %}
+</table></div>
 {% endif %}
 
 {% if selected %}
-<h2>Runs</h2>
+<h2>Runs on {{ selected.track }} · {{ selected.car }}</h2>
 <div class="card scroll"><table>
   <tr><th>Player</th><th>Attempt</th><th>Status</th><th>Time</th><th>Note</th><th>Recorded</th><th></th></tr>
   {% for r in runs %}

@@ -2,7 +2,7 @@ import os
 import tempfile
 import unittest
 
-from timerecorder.nicknamePrompt import describeLookup, OK, WARNING
+from timerecorder.nicknamePrompt import describeLookup, setupWarning, OK, WARNING
 from timerecorder.tournamentDatabase import TournamentDatabase, FINISHED, DNF
 from timerecorder.leaderboard import createApp, formatGap
 
@@ -55,6 +55,21 @@ class TestTournamentUi(unittest.TestCase):
         self.assertEqual('01:15.500', data['rows'][0]['best'])
         self.assertEqual(['time', 'dnf'], [c['kind'] for c in data['rows'][0]['attempts']])
         self.assertEqual('+4.500', data['rows'][1]['gap'])
+
+    def testLeaderboardShowsOnlyTournamentSetup(self):
+        self.db.recordResult('a', 'T', 'C', 75.5, FINISHED)
+        self.db.recordResult('b', 'Other', 'C', 60.0, FINISHED)
+        client = createApp(self.db).test_client()
+
+        data = client.get('/api/standings?track=Other&car=C').get_json()
+
+        self.assertEqual(('T', 'C'), (data['track'], data['car']))
+        self.assertEqual(['a'], [r['name'] for r in data['rows']])
+        self.assertNotIn('combos', data)
+        self.assertNotIn('<select', client.get('/').get_data(as_text=True))
+
+    def testSetupWarningText(self):
+        self.assertIn('Tournament: T · C', setupWarning(('T', 'C')))
 
     def testLeaderboardEmpty(self):
         data = createApp(self.db).test_client().get('/api/standings').get_json()

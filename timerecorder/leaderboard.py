@@ -7,7 +7,7 @@ import logging
 import os
 import sys
 
-from flask import Flask, jsonify, request, Response
+from flask import Flask, jsonify, Response
 
 from .tournamentDatabase import TournamentDatabase, formatTime, DNF
 
@@ -23,14 +23,9 @@ def formatGap(gap):
         return ''
     return f'+{gap:.3f}' if gap < 60 else '+' + formatTime(gap)
 
-def standingsPayload(database, track=None, car=None):
-    combos = database.combos()
-    if not combos:
-        return {'combos': [], 'track': None, 'car': None, 'rows': [], 'max_attempts': database.max_attempts}
-
-    selected = next((c for c in combos if c['track'] == track and c['car'] == car), combos[0])
+def standingsRows(database, track, car):
     rows = []
-    for entry in database.standings(selected['track'], selected['car']):
+    for entry in database.standings(track, car):
         rows.append({
             'position': entry['position'],
             'name': entry['name'],
@@ -39,14 +34,17 @@ def standingsPayload(database, track=None, car=None):
             'attempts': [_cell(a) for a in entry['attempts']],
             'used': entry['used'],
         })
+    return rows
 
-    return {
-        'combos': [{'track': c['track'], 'car': c['car'], 'players': c['players']} for c in combos],
-        'track': selected['track'],
-        'car': selected['car'],
-        'rows': rows,
-        'max_attempts': database.max_attempts,
-    }
+def standingsPayload(database):
+    '''Standings of the tournament track and car only; runs on anything else are not shown.'''
+    active = database.activeCombo()
+    if active is None:
+        return {'track': None, 'car': None, 'rows': [], 'max_attempts': database.max_attempts}
+
+    track, car = active
+    return {'track': track, 'car': car, 'rows': standingsRows(database, track, car),
+            'max_attempts': database.max_attempts}
 
 def createApp(database):
     app = Flask(__name__)
@@ -57,7 +55,7 @@ def createApp(database):
 
     @app.get('/api/standings')
     def standings():
-        return jsonify(standingsPayload(database, request.args.get('track'), request.args.get('car')))
+        return jsonify(standingsPayload(database))
 
     return app
 
@@ -85,8 +83,6 @@ main { max-width: 1100px; margin: 0 auto; padding: 32px 16px 48px; }
 h1 { margin: 6px 0 2px; font-size: clamp(28px, 5vw, 48px); line-height: 1.1; }
 .car { color: var(--muted); font-size: clamp(16px, 2.4vw, 22px); }
 .bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin: 20px 0 14px; }
-select { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 6px;
-  padding: 6px 10px; font: inherit; max-width: 100%; }
 .updated { color: var(--muted); font-size: 13px; }
 table { width: 100%; border-collapse: separate; border-spacing: 0 6px; }
 th { text-align: left; color: var(--muted); font-weight: 600; font-size: 13px; text-transform: uppercase;
@@ -111,7 +107,6 @@ tr.p1 td { background: #262214; }
   <h1 id="track">Waiting for the first run</h1>
   <div class="car" id="car"></div>
   <div class="bar">
-    <select id="combo" hidden></select>
     <span class="updated" id="updated"></span>
   </div>
   <table>
@@ -121,28 +116,12 @@ tr.p1 td { background: #262214; }
   <div class="empty-msg" id="empty" hidden>No results yet.</div>
 </main>
 <script>
-const params = new URLSearchParams(location.search);
-let selected = params.has('track') ? {track: params.get('track'), car: params.get('car')} : null;
 const el = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-
-el('combo').addEventListener('change', e => {
-  selected = JSON.parse(e.target.value);
-  const q = new URLSearchParams(selected);
-  history.replaceState(null, '', '?' + q);
-  load();
-});
 
 function render(data) {
   el('track').textContent = data.track || 'Waiting for the first run';
   el('car').textContent = data.car || '';
-  const combo = el('combo');
-  combo.hidden = data.combos.length < 2;
-  combo.innerHTML = data.combos.map(c => {
-    const v = esc(JSON.stringify({track: c.track, car: c.car}));
-    const sel = c.track === data.track && c.car === data.car ? ' selected' : '';
-    return `<option value="${v}"${sel}>${esc(c.track)} · ${esc(c.car)} (${c.players})</option>`;
-  }).join('');
 
   let head = '<th>Pos</th><th>Driver</th><th>Best</th><th class="gap">Gap</th>';
   for (let i = 1; i <= data.max_attempts; i++) head += `<th>Run ${i}</th>`;
@@ -164,8 +143,7 @@ function render(data) {
 
 async function load() {
   try {
-    const q = selected ? '?' + new URLSearchParams(selected) : '';
-    const res = await fetch('api/standings' + q, {cache: 'no-store'});
+    const res = await fetch('api/standings', {cache: 'no-store'});
     render(await res.json());
   } catch (e) {
     el('updated').textContent = 'Connection lost, retrying…';

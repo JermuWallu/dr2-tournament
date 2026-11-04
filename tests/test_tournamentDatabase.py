@@ -68,6 +68,28 @@ class TestTournamentDatabase(unittest.TestCase):
         self.thing.recordResult('a', 'T2', CAR, 1.0, FINISHED)
         self.assertEqual(['T2', 'T1'], [c['track'] for c in self.thing.combos()])
 
+    def testFirstRunSetsActiveCombo(self):
+        self.assertIsNone(self.thing.activeCombo())
+        self.assertTrue(self.thing.isActiveCombo(TRACK, CAR))
+        self.thing.recordResult('a', TRACK, CAR, None, DNF)
+        self.thing.recordResult('a', 'Other', CAR, 1.0, FINISHED)
+        self.assertEqual((TRACK, CAR), self.thing.activeCombo())
+        self.assertFalse(self.thing.isActiveCombo('Other', CAR))
+
+    def testSetAndClearActiveCombo(self):
+        self.thing.setActiveCombo('Other', CAR)
+        self.assertEqual(('Other', CAR), self.thing.activeCombo())
+        self.thing.setActiveCombo(None, None)
+        self.assertIsNone(self.thing.activeCombo())
+
+    def testDeletingActiveComboClearsSetup(self):
+        self.thing.recordResult('a', TRACK, CAR, 1.0, FINISHED)
+        self.thing.recordResult('a', 'Other', CAR, 1.0, FINISHED)
+        self.thing.deleteCombo('Other', CAR)
+        self.assertEqual((TRACK, CAR), self.thing.activeCombo())
+        self.thing.deleteCombo(TRACK, CAR)
+        self.assertIsNone(self.thing.activeCombo())
+
     def testFormatTime(self):
         self.assertEqual('03:00.240', formatTime(180.24))
         self.assertEqual('00:59.999', formatTime(59.9994))

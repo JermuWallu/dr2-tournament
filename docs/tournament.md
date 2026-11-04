@@ -26,6 +26,8 @@ The leaderboard can also run on its own: `python -m timerecorder.leaderboard tou
 
 The console shows the admin address, e.g. `http://192.168.1.20:6969` (port 6969, or the next free one). Log in with `admin_passcode` from `config.yml` (default `jermu`). In the portal you can:
 
+- see the tournament setup and change it to any track/car that has been driven (or clear it, so the next run sets it)
+- browse the leaderboard of every driven track/car from a dropdown
 - edit a run's status, time (`m:ss.mmm`) or note, or delete it. Later attempts move up, so a deleted attempt can be driven again.
 - add a run by hand (counts as the player's next attempt)
 - rename or delete players
@@ -45,7 +47,8 @@ Anyone on the LAN who knows the passcode can change results, so change the defau
 | Stage finished without a nickname | nothing |
 
 - Nicknames are case-insensitive (`Jere` = `jere`) and keep the spelling of the first result.
-- Attempts are counted per track **and** car combination. The leaderboard shows the most recently driven combination and offers a selector when there are several.
+- **Tournament setup:** the first recorded run sets the tournament track and car. The public leaderboard shows only runs on that setup. Change it in the admin portal.
+- If a driver loads a different track or car, the nickname window warns that the time won't be on the current leaderboard. The run is still saved, and attempts are counted separately per track and car.
 - Leaderboard: one row per driver with best time, gap to leader, and each run. Equal best times share a position. Drivers with only DNFs are listed last.
 
 ### Settings (`config.yml`)

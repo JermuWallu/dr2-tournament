@@ -41,11 +41,11 @@ class TestTournamentSession(unittest.TestCase):
         self.load()
         self.assertEqual(PROMPTING, self.thing.state)
         self.game.pause.assert_called_once()
-        self.ui.showPrompt.assert_called_once_with('Sweet Lamb', 'Golf')
+        self.ui.showPrompt.assert_called_once_with('Sweet Lamb', 'Golf', None)
 
     def testAmbiguousCarNames(self):
         self.thing.stageStarted(309, [200, 201])
-        self.ui.showPrompt.assert_called_once_with('Sweet Lamb', 'Golf / 205')
+        self.ui.showPrompt.assert_called_once_with('Sweet Lamb', 'Golf / 205', None)
 
     def testStartResumesAndFinishRecordsTime(self):
         self.load()
@@ -132,6 +132,27 @@ class TestTournamentSession(unittest.TestCase):
         self.thing.start('x')
         self.game.pause.assert_not_called()
         self.game.resume.assert_not_called()
+
+    def testFirstRunDefinesSetupAndOtherCarWarns(self):
+        self.load()
+        self.thing.start('Jere')
+        self.thing.stageFinished(100.0)
+        self.assertEqual(('Sweet Lamb', 'Golf'), self.db.activeCombo())
+
+        self.thing.stageStarted(309, 201)
+        self.ui.showPrompt.assert_called_with('Sweet Lamb', '205', ('Sweet Lamb', 'Golf'))
+
+        self.thing.start('Jere')
+        self.thing.stageFinished(95.0)
+        self.assertIn('not on the leaderboard', self.ui.showResult.call_args[0][0])
+        # still stored, with its own attempts
+        self.assertEqual(1, self.db.lookup('Jere', 'Sweet Lamb', '205')['used'])
+        self.assertEqual(('Sweet Lamb', 'Golf'), self.db.activeCombo())
+
+    def testMatchingSetupDoesNotWarn(self):
+        self.db.setActiveCombo('Sweet Lamb', 'Golf')
+        self.load()
+        self.ui.showPrompt.assert_called_once_with('Sweet Lamb', 'Golf', None)
 
     def testDescribeUnknown(self):
         self.assertEqual('Unknown car', describe([], str, 'Unknown car'))

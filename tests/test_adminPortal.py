@@ -100,6 +100,40 @@ class TestAdminPortal(unittest.TestCase):
         self.post('/combo/delete')
         self.assertEqual(['Other'], [c['track'] for c in self.db.combos()])
 
+    def testChangeTournamentSetup(self):
+        self.db.recordResult('Jere', T, C, 100.0, FINISHED)
+        self.db.recordResult('Jere', 'Other', 'Car 2', 90.0, FINISHED)
+        self.csrf = self.login()
+        page = self.client.get('/').get_data(as_text=True)
+        self.assertIn('LIVE', page)
+        self.assertIn('Other · Car 2', page)
+
+        page = self.post('/setup', combo='["Other", "Car 2"]').get_data(as_text=True)
+
+        self.assertIn('Tournament setup is now Other · Car 2', page)
+        self.assertEqual(('Other', 'Car 2'), self.db.activeCombo())
+
+    def testSetupMustBeADrivenCombo(self):
+        self.db.recordResult('Jere', T, C, 100.0, FINISHED)
+        self.csrf = self.login()
+        page = self.post('/setup', combo='["Nope", "Car"]').get_data(as_text=True)
+        self.assertIn('has no runs', page)
+        self.assertEqual((T, C), self.db.activeCombo())
+
+    def testClearSetup(self):
+        self.db.recordResult('Jere', T, C, 100.0, FINISHED)
+        self.csrf = self.login()
+        self.post('/setup', combo='clear')
+        self.assertIsNone(self.db.activeCombo())
+
+    def testLeaderboardDropdownShowsOtherCombo(self):
+        self.db.recordResult('Jere', T, C, 100.0, FINISHED)
+        self.db.recordResult('Ville', 'Other', C, 90.0, FINISHED)
+        self.csrf = self.login()
+        page = self.client.get('/', query_string={'track': 'Other', 'car': C}).get_data(as_text=True)
+        self.assertIn('Runs on Other · ' + C, page)
+        self.assertIn('not on the public leaderboard', page)
+
     def testPageEscapesNicknames(self):
         self.db.recordResult('<b>"x\'', T, C, 100.0, FINISHED)
         self.csrf = self.login()
