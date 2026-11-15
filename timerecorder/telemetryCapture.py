@@ -31,7 +31,7 @@ def main():
     sock.settimeout(0.2)
     print(f'Listening on 127.0.0.1:{port}, writing {path}. Ctrl+C to stop.')
 
-    last = None
+    last = ()  # previous packet; empty until the first one arrives
     lastAt = None
     frozen = 0
     reportedSilence = False
@@ -66,10 +66,10 @@ def main():
 
                 if stats.count(0.0) == len(stats):
                     event = event or 'all_zero'
-                    if last is None or last.count(0.0) != len(last):
+                    if not last or last.count(0.0) != len(last):
                         print(f'[{now - started:8.2f}] ALL-ZERO packet')
 
-                frozen = frozen + 1 if last is not None and stats[1:] == last[1:] else 0
+                frozen = frozen + 1 if last and stats[1:] == last[1:] else 0
                 if frozen >= FROZEN_PACKETS and not reportedFrozen:
                     print(f'[{now - started:8.2f}] FROZEN (paused?): {describe(stats)}')
                     reportedFrozen = True
@@ -79,10 +79,10 @@ def main():
                     reportedFrozen = False
                     event = event or 'unfrozen'
 
-                if last is not None and stats[0] < last[0]:
+                if last and stats[0] < last[0]:
                     print(f'[{now - started:8.2f}] CLOCK WENT BACKWARDS {last[0]:.2f} -> {stats[0]:.2f}')
                     event = event or 'clock_back'
-                if last is not None and stats[59] != last[59]:
+                if last and stats[59] != last[59]:
                     print(f'[{now - started:8.2f}] LAP changed {last[59]} -> {stats[59]}')
                 if lastAt is None or int(now - started) != int(lastAt - started):
                     print(f'[{now - started:8.2f}] {describe(stats)}', end='\r')

@@ -1,102 +1,74 @@
 name: CI
 
-# Controls when the action will run. 
 on:
   push:
-    branches: '**'
-    tags: '**'
+    branches: [main]
   pull_request:
-    branches: '**'
+  workflow_dispatch:
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build:
-    runs-on: windows-2022
+  # What the tournament PC does: install-tournament.bat, then run from source
+  test:
+    name: Tests / Python ${{ matrix.python }}
+    runs-on: windows-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # oldest supported version and the one the tournament PC runs
+        python: ['3.12', '3.15']
+    env:
+      # Same as install-tournament.bat: PyYAML has no prebuilt wheel for the newest Python versions
+      PYYAML_FORCE_LIBYAML: '0'
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v6
 
     - name: Setup Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v6
       with:
-        python-version: 3.11
+        python-version: ${{ matrix.python }}
+        cache: pip
+        cache-dependency-path: requirements-tournament.txt
 
-    - name: Install job dependencies / Pip Install
-      run: pip install -r requirements.txt
-    
+    - name: Install tournament dependencies
+      run: python -m pip install -r requirements-tournament.txt pytest
+
     - name: Run tests / pytest
       run: python -m pytest tests
-    
-    - name: Lint code / pylint
-      run: |
-        pylint timerecorder --rcfile=timerecorder/.pylintrc
-        pylint tests --rcfile=tests/.pylintrc
 
-  check:
-    runs-on: ubuntu-latest
+    - name: Import tournament entry points
+      run: python -c "import timerecorder.tournament, timerecorder.leaderboard, timerecorder.adminPortal"
+
+  lint:
+    name: Lint / pylint
+    runs-on: windows-latest
+    timeout-minutes: 10
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
-      
-    - name: Check markdown links
-      uses: gaurav-nelson/github-action-markdown-link-check@v1
-      with:
-        use-verbose-mode: 'yes'
- 
-  assemble:
-    runs-on: windows-2022
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/')
-    
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v6
 
     - name: Setup Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v6
       with:
-        python-version: 3.11
+        python-version: '3.12'
+        cache: pip
+        cache-dependency-path: requirements.txt
 
-    - name: Install job dependencies / Pip Install
-      run: pip install -r requirements.txt
-    
-    - name: Bundle DR1 executable / PyInstaller
+    - name: Install dependencies
+      run: python -m pip install -r requirements.txt
+
+    # Fails on any error, or when the score drops below fail-under in the rcfile
+    - name: Lint code / pylint
       run: |
-        resources\bundle-dr1.ps1
-      shell: pwsh
-      env:
-        DRTR_CODESIGN_CERTIFICATE_PASS: ${{ secrets.DRTR_CODESIGN_CERTIFICATE_PASS }}
-
-    - name: Zip distribution / create-7z-action
-      uses: DuckSoft/create-7z-action@v1.0
-      with:
-        pathSource: ./dist/timerecorder-dr1
-        pathTarget: artifacts/timerecorder-dirt-rally.zip
-
-    - name: Bundle DR2 executable / PyInstaller
-      run: |
-        resources\bundle-dr2.ps1
-      shell: pwsh
-      env:
-        DRTR_CODESIGN_CERTIFICATE_PASS: ${{ secrets.DRTR_CODESIGN_CERTIFICATE_PASS }}
-
-    - name: Zip distribution / create-7z-action
-      uses: DuckSoft/create-7z-action@v1.0
-      with:
-        pathSource: ./dist/timerecorder-dr2
-        pathTarget: artifacts/timerecorder-dirt-rally-2.0.zip
-
-    - name: Hash zip files
-      run: |
-        $dr1_hash = (Get-FileHash -Algorithm SHA256 artifacts/timerecorder-dirt-rally.zip).Hash
-        $dr2_hash = (Get-FileHash -Algorithm SHA256 artifacts/timerecorder-dirt-rally-2.0.zip).Hash
-        echo "timerecorder-dirt-rally-2.0.zip SHA256: $dr2_hash" 
-        echo "timerecorder-dirt-rally.zip SHA256: $dr1_hash"
-
-    - name: Archive artifacts
-      uses: actions/upload-artifact@v3
-      with:
-        name: artifacts.zip
-        path: artifacts
+        python -m pylint timerecorder --rcfile=timerecorder/.pylintrc --fail-on=E,F
+        python -m pylint tests --rcfile=tests/.pylintrc --fail-on=E,F

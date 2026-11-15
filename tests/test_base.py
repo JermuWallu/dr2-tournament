@@ -5,7 +5,8 @@ from timerecorder import config, log
 
 class TestBase(unittest.TestCase):
 
-    def __init__(self, methodName, testroot):
+    # pytest instantiates every collected TestCase class, including this base, with only a method name
+    def __init__(self, methodName='runTest', testroot='test-files'):
         unittest.TestCase.__init__(self, methodName)
         if not os.path.exists(testroot):
             os.mkdir(testroot)
