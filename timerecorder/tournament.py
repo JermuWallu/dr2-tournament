@@ -66,9 +66,10 @@ def localAddress():
     except OSError:
         return 'localhost'
 
-def startLeaderboard(database, host, port):
+def startLeaderboard(database, host, port, gameName='DiRT Rally 2.0'):
     from .leaderboard import serve  #pylint: disable=import-outside-toplevel
-    thread = threading.Thread(target=serve, args=(database, host, port), name='leaderboard', daemon=True)
+    thread = threading.Thread(target=serve, args=(database, host, port, gameName),
+                              name='leaderboard', daemon=True)
     thread.start()
 
 def startAdminPortal(database, settings, backups):

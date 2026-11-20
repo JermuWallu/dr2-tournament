@@ -36,17 +36,20 @@ def standingsRows(database, track, car):
         })
     return rows
 
-def standingsPayload(database):
+DEFAULT_GAME_NAME = 'DiRT Rally 2.0'
+
+def standingsPayload(database, gameName=DEFAULT_GAME_NAME):
     '''Standings of the tournament track and car only; runs on anything else are not shown.'''
     active = database.activeCombo()
     if active is None:
-        return {'track': None, 'car': None, 'rows': [], 'max_attempts': database.max_attempts}
+        return {'game': gameName, 'track': None, 'car': None, 'rows': [],
+                'max_attempts': database.max_attempts}
 
     track, car = active
-    return {'track': track, 'car': car, 'rows': standingsRows(database, track, car),
-            'max_attempts': database.max_attempts}
+    return {'game': gameName, 'track': track, 'car': car,
+            'rows': standingsRows(database, track, car), 'max_attempts': database.max_attempts}
 
-def createApp(database):
+def createApp(database, gameName=DEFAULT_GAME_NAME):
     app = Flask(__name__)
 
     @app.get('/')
@@ -55,13 +58,13 @@ def createApp(database):
 
     @app.get('/api/standings')
     def standings():
-        return jsonify(standingsPayload(database))
+        return jsonify(standingsPayload(database, gameName))
 
     return app
 
-def serve(database, host='0.0.0.0', port=5000):
+def serve(database, host='0.0.0.0', port=5000, gameName=DEFAULT_GAME_NAME):
     logging.getLogger('werkzeug').setLevel(logging.WARNING)
-    createApp(database).run(host=host, port=port, debug=False, use_reloader=False, threaded=True)
+    createApp(database, gameName).run(host=host, port=port, debug=False, use_reloader=False, threaded=True)
 
 PAGE = '''<!doctype html>
 <html lang="en">
@@ -103,7 +106,7 @@ tr.p1 td { background: #262214; }
 </head>
 <body>
 <main>
-  <div class="kicker">DIRT RALLY 2.0 · LAN TOURNAMENT</div>
+  <div class="kicker" id="game">LAN TOURNAMENT</div>
   <h1 id="track">Waiting for the first run</h1>
   <div class="car" id="car"></div>
   <div class="bar">
@@ -120,6 +123,7 @@ const el = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 function render(data) {
+  el('game').textContent = ((data.game || '') + ' · LAN TOURNAMENT').trim().toUpperCase();
   el('track').textContent = data.track || 'Waiting for the first run';
   el('car').textContent = data.car || '';
 

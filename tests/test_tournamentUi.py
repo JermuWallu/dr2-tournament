@@ -71,6 +71,13 @@ class TestTournamentUi(unittest.TestCase):
     def testSetupWarningText(self):
         self.assertIn('Tournament: T · C', setupWarning(('T', 'C')))
 
+    def testGameNameIsShown(self):
+        self.db.recordResult('a', 'T', 'C', 1.0, FINISHED)
+        data = createApp(self.db, 'EA SPORTS WRC').test_client().get('/api/standings').get_json()
+        self.assertEqual('EA SPORTS WRC', data['game'])
+        self.assertEqual('DiRT Rally 2.0', createApp(self.db).test_client()
+                         .get('/api/standings').get_json()['game'])
+
     def testLeaderboardEmpty(self):
         data = createApp(self.db).test_client().get('/api/standings').get_json()
         self.assertEqual([], data['rows'])

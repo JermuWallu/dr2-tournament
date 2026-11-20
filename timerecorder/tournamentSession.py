@@ -28,7 +28,12 @@ FROZEN_PACKETS_FOR_PAUSE = 10
 PAUSE_CHECK_DELAY_SECONDS = 1.5
 
 def describe(element, lookupName, unknown):
-    '''Name for an identified id, joined names for ambiguous candidates.'''
+    '''
+    Name for an identified id, joined names for ambiguous candidates (DiRT Rally cannot always
+    tell two cars apart). A name the game already gave us as text is passed through.
+    '''
+    if isinstance(element, str):
+        return element or unknown
     if identify(element) != AMBIGUOUS:
         return lookupName(element)
     if not element:
@@ -69,24 +74,39 @@ class TournamentSession():  #pylint: disable=too-many-instance-attributes
         self.last_packet_at = None
         self.previous_stats = None
         self.frozen_count = 0
+        self.reported_paused = None  # set by games that say so themselves, e.g. EA WRC
         self.pause_check_at = None
 
     def setNameLookup(self, trackName, carName):
         '''Functions resolving track and car ids to names (from the base database).'''
         self.name_lookup = (trackName, carName)
 
-    # --- events from StatsProcessor (UDP thread) ---
+    # --- events from the game's telemetry (UDP thread) ---
 
-    def packetReceived(self, stats):
+    def packetReceived(self, stats=None):
+        '''
+        Any telemetry packet. Silence after this is how a driver leaving the stage is noticed.
+        DiRT Rally passes its raw values, which also reveal a pause: while the game is paused it
+        keeps sending, with every field frozen except the run time. EA WRC says so itself instead.
+        '''
         with self.lock:
             self.last_packet_at = self.clock()
+            if stats is None:
+                return
             if self.previous_stats is not None and tuple(stats[1:]) == tuple(self.previous_stats[1:]):
                 self.frozen_count += 1
             else:
                 self.frozen_count = 0
             self.previous_stats = stats
 
+    def gamePaused(self, paused):
+        '''For games that send pause and resume events of their own.'''
+        with self.lock:
+            self.reported_paused = bool(paused)
+
     def isGamePaused(self):
+        if self.reported_paused is not None:
+            return self.reported_paused
         return self.frozen_count >= FROZEN_PACKETS_FOR_PAUSE
 
     def stageStarted(self, track, car):
@@ -119,10 +139,10 @@ class TournamentSession():  #pylint: disable=too-many-instance-attributes
                 self.ui.hidePrompt()
             self.state = IDLE
 
-    def stageAborted(self):
+    def stageAborted(self, reason=None):
         with self.lock:
             if self.state == RUNNING:
-                self._recordDnf('stage restarted')
+                self._recordDnf(reason or 'stage restarted')
                 self.state = IDLE
             # While PROMPTING, the restarted stage triggers stageStarted again and keeps the prompt open
 

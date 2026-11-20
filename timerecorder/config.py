@@ -35,6 +35,24 @@ TOURNAMENT_DEFAULTS = {
     'backup_interval_minutes': 15,
 }
 
+WRC = 'wrc'
+# Only the settings that must differ from the DiRT Rally tournament, so both can run at once.
+WRC_DEFAULTS = {
+    'tournament_db': 'wrc-tournament.db',
+    'game_window_title': 'WRC',
+    'telemetry_host': '127.0.0.1',
+    'ports': {
+        'session_update': 20777,
+        'session_start': 20778,
+        'session_end': 20779,
+        'session_pause': 20780,
+        'session_resume': 20781,
+    },
+    'finished_statuses': [1],
+    'leaderboard_port': 5001,
+    'admin_port': 6970,
+}
+
 TELEMETRY_SERVER = 'telemetry_server'
 HOST = 'host'
 PORT = 'port'
@@ -74,6 +92,7 @@ class Config(dict):  #pylint: disable=too-many-instance-attributes
         self.user_signals = None
 
         self.tournament = None
+        self.wrc = None
 
         self._migrate()
 
@@ -116,6 +135,12 @@ class Config(dict):  #pylint: disable=too-many-instance-attributes
         for key, value in TOURNAMENT_DEFAULTS.items():
             self[TOURNAMENT].setdefault(key, value)
 
+        self.setdefault(WRC, dict(WRC_DEFAULTS))
+        for key, value in WRC_DEFAULTS.items():
+            self[WRC].setdefault(key, value)
+        for key, value in WRC_DEFAULTS['ports'].items():
+            self[WRC]['ports'].setdefault(key, value)
+
         self.dump()
 
     def _loadBasicSettings(self):
@@ -151,6 +176,18 @@ class Config(dict):  #pylint: disable=too-many-instance-attributes
             'backup_interval_minutes': float(settings['backup_interval_minutes']),
         }
 
+    def _loadWrc(self):
+        settings = self[WRC]
+        self.wrc = {
+            'tournament_db': str(settings['tournament_db']),
+            'game_window_title': str(settings['game_window_title']),
+            'telemetry_host': str(settings['telemetry_host']),
+            'ports': {str(name): int(port) for name, port in settings['ports'].items()},
+            'finished_statuses': [int(status) for status in settings['finished_statuses']],
+            'leaderboard_port': int(settings['leaderboard_port']),
+            'admin_port': int(settings['admin_port']),
+        }
+
     def load(self):
         logger.debug('Loading config')
         file = os.path.basename(self.filename)
@@ -159,6 +196,7 @@ class Config(dict):  #pylint: disable=too-many-instance-attributes
             self._loadBasicSettings()
             self._loadHeuristics()
             self._loadTournament()
+            self._loadWrc()
 
         except Exception as ex:
             logger.debug('Failed to load config file %s: %s', file, ex)

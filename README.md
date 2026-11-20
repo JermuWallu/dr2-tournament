@@ -1,6 +1,6 @@
-# DR2 Tournament
+# Rally Tournament
 
-A LAN tournament tool for **DiRT Rally 2.0**: every driver gets two attempts on the same track and car. The game pauses to ask each driver's nickname, results are recorded automatically from the game's telemetry, and a live leaderboard runs in the browser.
+A LAN tournament tool for **DiRT Rally 2.0** and **EA SPORTS WRC**: every driver gets two attempts on the same track and car. The game pauses to ask each driver's nickname, results are recorded automatically from the game's telemetry, and a live leaderboard runs in the browser.
 
 Built on top of [dirt-rally-time-recorder](https://github.com/soong-construction/dirt-rally-time-recorder) by Max Bechtold. The original stage time recorder still works as before (see [Original time recorder](#original-time-recorder)).
 
@@ -8,9 +8,10 @@ Built on top of [dirt-rally-time-recorder](https://github.com/soong-construction
 
 ## Contents
 
-- [DR2 Tournament](#dr2-tournament)
+- [Rally Tournament](#rally-tournament)
   - [Contents](#contents)
   - [Features](#features)
+  - [Which game](#which-game)
   - [Requirements](#requirements)
   - [Installation](#installation)
     - [1. Download](#1-download)
@@ -21,6 +22,7 @@ Built on top of [dirt-rally-time-recorder](https://github.com/soong-construction
     - [6. Check the PC (recommended)](#6-check-the-pc-recommended)
     - [Updating](#updating)
   - [Running a tournament](#running-a-tournament)
+  - [EA SPORTS WRC](#ea-sports-wrc)
   - [Admin portal](#admin-portal)
   - [Backups](#backups)
   - [Rules as implemented](#rules-as-implemented)
@@ -64,16 +66,32 @@ Built on top of [dirt-rally-time-recorder](https://github.com/soong-construction
 - The live database plus the newest 3 copies.
 - A copy is made every 15 minutes (only if something changed), on every new best time, and before a restore.
 
+**Two games**
+- The same rules, windows and web pages for DiRT Rally 2.0 and EA SPORTS WRC.
+- Each has its own database, ports and backups, so both can run at the same time.
+
 **Other**
 - Runs on Python 3.12 and newer. The original recorder needed Python 3.11 because of `asyncore`, which Python 3.12 removed.
 - Includes a telemetry capture tool and a pause self-test, for checking a new PC before the event.
 
 ---
 
+## Which game
+
+| | DiRT Rally 2.0 | EA SPORTS WRC |
+|---|---|---|
+| Set-up | Edit `hardware_settings_config.xml` ([step 3](#3-enable-telemetry-in-dirt-rally-20)) | Run `wrc-setup.bat` ([details](docs/wrc-tournament.md)) |
+| Start | `tournament.bat` | `wrc-tournament.bat` |
+| Leaderboard | port 5000 | port 5001 |
+| Admin portal | port 6969 | port 6970 |
+| Database | `tournament.db` | `wrc-tournament.db` |
+
+The instructions below are for DiRT Rally 2.0. WRC uses the same installation and the same rules, with its own telemetry set-up: see **[docs/wrc-tournament.md](docs/wrc-tournament.md)**.
+
 ## Requirements
 
 - **Windows 10 or 11** on the PC that runs the game.
-- **DiRT Rally 2.0** on PC (Steam). UDP telemetry only exists on PC, not on consoles.
+- **DiRT Rally 2.0** and/or **EA SPORTS WRC** on PC. UDP telemetry only exists on PC, not on consoles.
 - **Python 3.12 or newer** from [python.org](https://www.python.org/downloads/). It includes tkinter, which the nickname window needs. Tested with Python 3.15.
 - Optional: [Git](https://git-scm.com/download/win), to download and update with `git pull`.
 - For the web pages: other devices must be on the same network.
@@ -157,6 +175,20 @@ To start a new tournament, close the program and rename or delete `tournament.db
 
 ---
 
+## EA SPORTS WRC
+
+Full instructions: **[docs/wrc-tournament.md](docs/wrc-tournament.md)**. In short:
+
+1. Start EA SPORTS WRC once so it creates `Documents\My Games\WRC\telemetry\`, then close it.
+2. Run **`wrc-setup.bat`**, which tells the game what to send.
+3. Restart the game.
+4. Run **`wrc-capture.bat`** and drive a stage (start, pause, finish, retire) to confirm the telemetry and to note the `route_id` and `vehicle_id` of your tournament stage and car.
+5. Run **`wrc-tournament.bat`**.
+
+WRC reports finishing and retiring itself, so DNFs are read from the game rather than inferred, and pausing is exact. The car and stage arrive as numbers; add friendly names to `resources/wrc-names.json` or rename them in the admin portal.
+
+Because EA's channel names and result codes are not published in a form this project could verify, **run step 4 before the event**. Anything the tool cannot read as a finish is recorded as a DNF, never as a time.
+
 ## Admin portal
 
 Open `http://<PC address>:6969` (or the next free port, shown in the console) and log in with `admin_passcode`.
@@ -199,6 +231,8 @@ The `backups` folder next to `tournament.db` holds the newest **3** copies. Olde
 | Stage finished without a nickname | Nothing |
 | Stage on another track or car | Saved, with its own attempt count, but not on the public leaderboard |
 
+For EA WRC the first three rows come from the game's own `session_end` status rather than being inferred from the telemetry.
+
 - Each driver gets 2 attempts per track and car combination.
 - Equal best times share a position, and equal times are listed alphabetically.
 
@@ -206,7 +240,7 @@ The `backups` folder next to `tournament.db` holds the newest **3** copies. Olde
 
 ## Configuration
 
-`config.yml` is created on first start. Tournament settings:
+`config.yml` is created on first start. Tournament settings (shared by both games):
 
 ```yaml
 tournament:
@@ -226,6 +260,8 @@ telemetry_server:
   host: 127.0.0.1
   port: 20777                    # must match the port in hardware_settings_config.xml
 ```
+
+EA WRC adds a `wrc:` section holding only what must differ (its own database, ports and result codes). See [docs/wrc-tournament.md](docs/wrc-tournament.md#settings-configyml).
 
 Changes apply the next time you start `tournament.bat`. For the original recorder's settings, see [docs/configuration.md](docs/configuration.md). More detail on tournament mode is in [docs/tournament.md](docs/tournament.md).
 
@@ -282,9 +318,11 @@ The original project credits, which also apply here:
 - [Billiam/pygauge](https://github.com/Billiam/pygauge): the core code
 - [ErlerPhilipp/dr2_logger](https://github.com/ErlerPhilipp/dr2_logger): DR2 UDP data recognition, and the reference for detecting paused telemetry used in tournament mode
 
+EA SPORTS WRC support uses the game's own documented UDP telemetry, configured through the JSON files in `Documents\My Games\WRC\telemetry\`.
+
 Third-party licenses are listed in [THIRD_PARTY_LICENSES.txt](THIRD_PARTY_LICENSES.txt).
 
-DiRT Rally 2.0 is a trademark of its respective owners. This project is not affiliated with or endorsed by Codemasters or Electronic Arts.
+DiRT Rally 2.0 and EA SPORTS WRC are trademarks of their respective owners. This project is not affiliated with or endorsed by Codemasters, Electronic Arts or Nacon.
 
 ---
 
@@ -296,7 +334,7 @@ The tournament features of this fork were written with the help of an AI assista
 - results and DNF detection
 - the tournament setup
 - the web leaderboard, admin portal and backups
-- the Python 3.12+ receiver
+- the Python 3.12+ receiver and the EA SPORTS WRC support
 - the tests and documentation, including this README
 
 The project owner chose the features and rules, reviewed the changes, and tested them with DiRT Rally 2.0 on real hardware. The AI wrote the code from those instructions and checked it with automated tests and simulated telemetry.

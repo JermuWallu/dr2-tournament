@@ -1,0 +1,14 @@
+{
+  "_comment": [
+    "Friendly names for the numeric ids EA SPORTS WRC sends.",
+    "The ids are not published, so this file starts empty: the tournament shows",
+    "'Route 12345' and 'Car 103' until you fill them in.",
+    "Run wrc-capture.bat on a stage to see the route_id, location_id and vehicle_id",
+    "for the track and car you are using, then add them below. Only the ones you",
+    "actually use in the tournament are worth adding.",
+    "You can also rename the track and car afterwards in the admin portal."
+  ],
+  "locations": {},
+  "routes": {},
+  "vehicles": {}
+}
