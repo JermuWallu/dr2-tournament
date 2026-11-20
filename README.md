@@ -1,112 +1,310 @@
-![CI](https://github.com/soong-construction/dirt-rally-time-recorder/workflows/CI/badge.svg)
+# DR2 Tournament
 
-## Goal
-This tool allows you to track your stage times in DiRT Rally and DiRT Rally 2.0 and browse them, which the game itself does not allow.  
+A LAN tournament tool for **DiRT Rally 2.0**: every driver gets two attempts on the same track and car. The game pauses to ask each driver's nickname, results are recorded automatically from the game's telemetry, and a live leaderboard runs in the browser.
 
-Time tracking works for stage rallies and the Pikes Peak events of the original DiRT Rally.  
+Built on top of [dirt-rally-time-recorder](https://github.com/soong-construction/dirt-rally-time-recorder) by Max Bechtold. The original stage time recorder still works as before (see [Original time recorder](#original-time-recorder)).
 
-## First time set up
+---
 
-You can choose to download *dirt-rally-time-recorder* as a ready-to-use bundle (tested to work on Windows 10 x64, read about signing issues [here](docs/unknown-publisher-warning.md)). You can also [set it up from scratch](docs/setup-from-scratch.md). 
+## Contents
 
-### Ready-to-use bundle
-- Download the [latest release](https://github.com/soong-construction/dirt-rally-time-recorder/releases/latest) for either the original DiRT Rally or 2.0
-  - Unzip the installation folder somewhere
-- Start time tracking  
-  - in your installation folder, start `timerecord.exe` 
-  - It should tell you to be *Waiting for data...*, otherwise take a look at [Troubleshooting](#troubleshooting)  
+- [DR2 Tournament](#dr2-tournament)
+  - [Contents](#contents)
+  - [Features](#features)
+  - [Requirements](#requirements)
+  - [Installation](#installation)
+    - [1. Download](#1-download)
+    - [2. Install Python packages](#2-install-python-packages)
+    - [3. Enable telemetry in DiRT Rally 2.0](#3-enable-telemetry-in-dirt-rally-20)
+    - [4. Set the display mode](#4-set-the-display-mode)
+    - [5. Change the admin passcode](#5-change-the-admin-passcode)
+    - [6. Check the PC (recommended)](#6-check-the-pc-recommended)
+    - [Updating](#updating)
+  - [Running a tournament](#running-a-tournament)
+  - [Admin portal](#admin-portal)
+  - [Backups](#backups)
+  - [Rules as implemented](#rules-as-implemented)
+  - [Configuration](#configuration)
+  - [Troubleshooting](#troubleshooting)
+  - [Original time recorder](#original-time-recorder)
+  - [Credits](#credits)
+  - [Declaration of AI use](#declaration-of-ai-use)
+  - [License](#license)
+
+---
+
+## Features
+
+**Nickname prompt**
+- When a stage has loaded, the tool pauses DiRT Rally 2.0 (by sending Esc to the game) and shows a nickname window, fullscreen by default so it can't be missed on ultrawide screens.
+- The nickname box starts empty. After typing, it shows whether the driver is new or how many attempts they have used, with their earlier times.
+- A driver who has used both attempts sees a warning, and **Start** stays disabled.
+- After **Start**, a big **HYVÄÄ RALLIA!** appears with a 2-second countdown, then the game resumes.
+
+**Automatic results**
+- The finish time is read from the game's UDP telemetry and saved with the nickname and attempt number.
+- DNFs are detected automatically: a stage restart, leaving the stage (telemetry stops), or loading a new stage before finishing.
+- Nicknames are case-insensitive (`Jere` = `jere`).
+
+**Tournament setup**
+- The first recorded run sets the tournament track and car.
+- If a driver loads a different track or car, the nickname window warns that the time won't be on the current leaderboard. The run is still saved.
+
+**Live web leaderboard** (port 5000)
+- Shows the tournament track and car only, with one row per driver: position, best time, gap to the leader, run 1 and run 2.
+- Sorted by best time, then name. Drivers with only DNFs are listed last.
+- Refreshes every 3 seconds and works on any device on the LAN: a projector, a TV or phones.
+
+**Admin portal** (port 6969, passcode protected)
+- Edit, delete or add runs by hand. Rename or delete players.
+- Change the tournament track and car, and view the leaderboard of every driven combination.
+- Find, view, download and restore backups.
+
+**Rotating backups**
+- The live database plus the newest 3 copies.
+- A copy is made every 15 minutes (only if something changed), on every new best time, and before a restore.
+
+**Other**
+- Runs on Python 3.12 and newer. The original recorder needed Python 3.11 because of `asyncore`, which Python 3.12 removed.
+- Includes a telemetry capture tool and a pause self-test, for checking a new PC before the event.
+
+---
+
+## Requirements
+
+- **Windows 10 or 11** on the PC that runs the game.
+- **DiRT Rally 2.0** on PC (Steam). UDP telemetry only exists on PC, not on consoles.
+- **Python 3.12 or newer** from [python.org](https://www.python.org/downloads/). It includes tkinter, which the nickname window needs. Tested with Python 3.15.
+- Optional: [Git](https://git-scm.com/download/win), to download and update with `git pull`.
+- For the web pages: other devices must be on the same network.
+
+---
+
+## Installation
+
+### 1. Download
+
+With Git:
+
+```powershell
+git clone https://github.com/JermuWallu/dr2-tournament.git
+cd dr2-tournament
+```
+
+Or, on GitHub, choose **Code → Download ZIP** and unzip it somewhere, e.g. `C:\dr2-tournament`.
+
+### 2. Install Python packages
+
+Double-click **`install-tournament.bat`** in the folder, or run it in PowerShell:
+
+```powershell
+.\install-tournament.bat
+```
+
+It installs Flask and PyYAML. It also sets `PYYAML_FORCE_LIBYAML=0`, so PyYAML installs without the Microsoft C++ Build Tools on Python versions that have no prebuilt PyYAML package yet.
+
+### 3. Enable telemetry in DiRT Rally 2.0
+
+1. Open `%USERPROFILE%\Documents\My Games\DiRT Rally 2.0\hardwaresettings\hardware_settings_config.xml` in a text editor.
+2. Change the `udp` line to:
+   ```xml
+   <udp enabled="true" extradata="3" ip="127.0.0.1" port="20777" delay="1" />
+   ```
+3. For VR, make the same change in `hardware_settings_config_vr.xml`.
+
+Steam updates sometimes reset this file, so check it again after a game update.
+
+### 4. Set the display mode
+
+In DiRT Rally 2.0, set the display mode to **borderless** or **windowed**. In exclusive fullscreen, the nickname window cannot appear over the game.
+
+### 5. Change the admin passcode
+
+Start `tournament.bat` once and close it. This creates `config.yml`. Open it and change `admin_passcode` under `tournament:` (the default is `jermu`).
+
+### 6. Check the PC (recommended)
+
+Run these once, with tournament mode closed:
+
+- **Pausing:** run `python -m timerecorder.gameControl`, then drive onto a stage within 5 seconds. The game should pause, then resume 5 seconds later. If it doesn't, set `auto_pause: 0` in `config.yml`, and drivers press Esc themselves.
+- **Telemetry:** run `telemetry-capture.bat`, then on a stage pause, restart, finish and retire once each. The console reports what the game sends (`FROZEN`, `SILENCE`, `ALL-ZERO`, clock jumps), and a CSV file stores every packet.
 
 ### Updating
-To update to a new version, simply download the new release or create a new bundle as instructed above. To be safe, backup your `dirtrally-laptimes.db`. You can overwrite your existing installation folder with the new one.
 
-Make sure to start *dirt-rally-time-recorder* once to allow to migrate the database and config. 
-
-### Configuration
-Before starting DiRT Rally [2.0] you need to enable UDP telemetry like so:
-- Navigate to the settings directory of [DiRT Rally](https://www.pcgamingwiki.com/wiki/DiRT_Rally#Configuration_file.28s.29_location) or [DiRT Rally 2.0](https://www.pcgamingwiki.com/wiki/DiRT_Rally_2.0#Configuration_file.28s.29_location) (e.g. `%USERPROFILE%\Documents\My Games\DiRT Rally 2.0\hardwaresettings\`)
-- Open `hardware_settings_config.xml` with a text editor
-- Enable telemetry and request extradata by adapting the appropriate line as follows: `<udp enabled="true" extradata="3" ...`  
-- Note for VR users: For the VR mode, the above setting has to be adapted in  `hardware_settings_config_vr.xml` as well
-
-There are further configurations and optional features that can be configured in `config.yml`. Please refer to the documentation [here](docs/configuration.md).
-  
-## Record stage times
-- Start DiRT Rally [2.0] and finish a stage  
-  - *dirt-rally-time-recorder* runs in the background, reporting the car and the track it identifies from the telemetry  
-  - for cars, it will display control interface information such as the transmission type (based on [this discussion](http://forums.codemasters.com/discussion/7071/dirt-rally-handbrake-and-transmission-information)) 
-  - it will look something like this:
-```
-TRACK: Sweet Lamb
-CAR: Volkswagen Golf GTI 16V
-Volkswagen Golf GTI 16V: H-PATTERN shifting, 5 speed, with manual CLUTCH, with HANDBRAKE
-```
-- On stage completion, it reports your top speed and time and saves it to the database 
-  - to dump the database into a CSV file consumable by your favorite spreadsheet editor, run `export-laptimes.bat`  
-  - to quickly view your recorded times like below, run `list-laptimes.bat`  
-```
-┌───────────────────────────────────────┬────────────────────────────────┬─────────────────────┬───────────┬──────────┐
-│                 Track                 │              Car               │        Date         │   Time    │ Topspeed │
-├───────────────────────────────────────┼────────────────────────────────┼─────────────────────┼───────────┼──────────┤
-│ Annbank Station                       │ Peugeot 205 GTI                │ 2020-07-30 12:47:48 │ 05:32.953 │ 158.4    │
-│ Anodou Farmakas                       │ Lancia Stratos                 │ 2020-04-26 11:26:44 │ 07:59.897 │ 129.6    │
-│ Anodou Farmakas                       │ Porsche 911 SC RS              │ 2020-04-14 18:28:20 │ 08:08.114 │ 136.8    │
+```powershell
+git pull
 ```
 
-## LAN tournament mode
-For a two-attempt LAN time attack with nickname prompt and live web leaderboard, see [docs/tournament.md](docs/tournament.md).
+With a ZIP download, download it again and copy your `tournament.db`, `backups` folder and `config.yml` into the new folder.
 
-## Limitations
-Since DiRT Rally [2.0] telemetry data doesn't allow to clearly identify every available car and track, this tool will sometimes ask you to resolve this after completing a stage. You can [enable heuristics](docs/configuration.md#heuristics) to somewhat alleviate this limitation.  
+---
 
-In order to consolidate the database, the tool prepares update scripts for you, e.g. `1573403766_ElRodeo_PoloGTIR5.bat`
-- open your installation folder  
-- run the update script that matches the car and track you chose (e.g. double-click it)  
-- you will barely notice a window opening and closing, and that's it
-- each time you start *dirt-rally-time-recorder*, it automatically removes update scripts older than a week 
+## Running a tournament
 
-Be aware that this tool cannot know the car or track conditions when recording. In order to beat your best time, choose an undamaged car with proper setup, and ideal track and weather conditions.
+1. Start DiRT Rally 2.0 and open a **Time Trial** with the tournament track and car.
+2. Double-click **`tournament.bat`**. The console shows the addresses, for example:
+   ```
+   Leaderboard: http://192.168.1.20:5000
+   Admin portal: http://192.168.1.20:6969
+   ```
+   The first time, allow Python through the Windows firewall so other devices can open the pages.
+3. Open the leaderboard on the screen everyone watches.
+4. Each driver loads the stage, types a nickname, presses **Start** and drives. The result appears on the leaderboard within a few seconds.
+
+The first recorded run sets the tournament track and car. To change it, use the admin portal.
+
+To start a new tournament, close the program and rename or delete `tournament.db`. Keep the old file if you want its results.
+
+---
+
+## Admin portal
+
+Open `http://<PC address>:6969` (or the next free port, shown in the console) and log in with `admin_passcode`.
+
+| Section | What you can do |
+|---|---|
+| Tournament setup | See the current track and car (marked LIVE), switch to any driven combination, or clear it so the next run sets it |
+| Leaderboard | Pick any driven track and car from a dropdown and see its standings |
+| Runs | Change a run's status (Finished/DNF), time (`3:07.654`) or note, or delete it. Deleting a run moves later attempts up, so the driver can drive that attempt again |
+| Add a run by hand | e.g. after a game crash. Counts as the driver's next attempt, and the attempt limit still applies |
+| Players | Rename (a name that's already taken is refused) or delete a player and all their runs |
+| Backups | Back up now, then view, download or restore any backup |
+| Danger zone | Delete all runs of a track and car |
+
+Anyone on the network who knows the passcode can change results, so use your own passcode. Logins reset when the program restarts.
+
+---
+
+## Backups
+
+The `backups` folder next to `tournament.db` holds the newest **3** copies. Older ones are deleted automatically. A copy is made:
+
+- every **15 minutes**, skipped when nothing changed since the newest copy
+- whenever a run sets a **new best time** on the tournament leaderboard
+- right **before a restore**, so a restore can be undone
+- when you press **Back up now** in the admin portal
+
+**View** opens a read-only page with the backup's setup, leaderboard and all runs. **Restore** replaces all live data (runs, players, tournament setup) and works while the tournament is running. Because the safety copy counts as one of the 3, a restore pushes out the oldest backup.
+
+---
+
+## Rules as implemented
+
+| Situation | What is recorded |
+|---|---|
+| Driver finishes the stage | Finish time for the next attempt |
+| Driver restarts the stage (pause menu → Restart) | DNF, and the nickname window opens again |
+| Telemetry stops for 15 s after Start (retired or quit to the menu) | DNF |
+| A new stage loads before the running one finished | DNF |
+| Stage finished without a nickname | Nothing |
+| Stage on another track or car | Saved, with its own attempt count, but not on the public leaderboard |
+
+- Each driver gets 2 attempts per track and car combination.
+- Equal best times share a position, and equal times are listed alphabetically.
+
+---
+
+## Configuration
+
+`config.yml` is created on first start. Tournament settings:
+
+```yaml
+tournament:
+  max_attempts: 2
+  auto_pause: 1                  # 0: drivers pause/resume with Esc themselves
+  game_window_title: DiRT Rally 2.0
+  dnf_timeout_seconds: 15        # telemetry silence after Start that counts as a DNF
+  leaderboard_host: 0.0.0.0      # 127.0.0.1 keeps both web pages on this PC only
+  leaderboard_port: 5000
+  prompt_mode: fullscreen        # or 'centered'
+  start_delay_seconds: 2         # HYVÄÄ RALLIA! countdown after Start
+  admin_passcode: jermu          # change this
+  admin_port: 6969               # the next free port is used if taken
+  backup_keep: 3
+  backup_interval_minutes: 15
+telemetry_server:
+  host: 127.0.0.1
+  port: 20777                    # must match the port in hardware_settings_config.xml
+```
+
+Changes apply the next time you start `tournament.bat`. For the original recorder's settings, see [docs/configuration.md](docs/configuration.md). More detail on tournament mode is in [docs/tournament.md](docs/tournament.md).
+
+---
 
 ## Troubleshooting
-Starting:
-- to understand MS Defender SmartScreen warnings for *dirt-rally-time-recorder*, read [this](docs/unknown-publisher-warning.md)
-- if you encounter an error message about sockets, understand that this tool cannot run in parallel, but only in a single instance at the same time
-- unless you downloaded the bundled version, have a look at `resources/migrate.sql` to find instructions how to update to new releases
-- if you encounter errors at start-up, see if renaming the file `dirtrally-laptimes.db` helps (which will create a new database) 
 
-Configuring the tool: 
-- Steam updates of the game sometimes reset *hardware_settings_config.xml*. Then, repeat the [configuration steps](#configuration) to enable UDP telemetry again
-- in case you modified the telemetry host or port in *hardware_settings_config.xml*, adapt `config.yml` [accordingly](docs/configuration.md#telemetry)
+**`pip` asks for "Microsoft Visual C++ 14.0 or greater"**
+Your Python is newer than PyYAML's prebuilt packages. Use `install-tournament.bat`, or in PowerShell run `$env:PYYAML_FORCE_LIBYAML = "0"` in the same window before `py -m pip install -r requirements-tournament.txt`.
 
-Recording:
-- if the game has been updated with new cars or tracks, recognition can fail ("Unmapped  telemetry"). You can continue to record further stages, but you're welcome to report this shortcoming (see below)
-- if your installation is too old, recognition can fail as well. Then, check if you can update to a [new version](https://github.com/soong-construction/dirt-rally-time-recorder/releases/) of *dirt-rally-time-recorder*
+**`OSError: [WinError 10048]` when starting**
+Another program already listens on port 20777: a second copy of this tool, SimHub, or dashboard, motion or wheel software. To find out which, run:
+```powershell
+Get-NetUDPEndpoint -LocalPort 20777 | ForEach-Object { Get-Process -Id $_.OwningProcess }
+```
+Close it, or let that app forward the telemetry to another port and set that port under `telemetry_server` in `config.yml`.
 
-Exporting:
-- when you export your stage times, be sure to avoid corrupt characters and import the CSV file in a spreadsheet editor with UTF-8 encoding. In MS Excel, use the [query tool](https://support.office.com/en-us/article/import-data-from-external-data-sources-power-query-be4330b3-5356-486c-a168-b68e9e616f5a)   
+**The nickname window doesn't appear over the game**
+Set the game to borderless or windowed mode.
 
-In any case, feel free to [open an issue](https://github.com/soong-construction/dirt-rally-time-recorder/issues/new) and attach the `timerecord.log` from your installation folder. You can also contact the author through [Steam](https://steamcommunity.com/id/soong-construction).
+**The game doesn't pause, or the window says "Game does not look paused"**
+Run the pause self-test (Installation, step 6). If pausing doesn't work on that PC, set `auto_pause: 0`.
 
-## Platform notes
-UDP telemetry is available [only on PC, not consoles.](https://forums.codemasters.com/topic/34154-analyze-and-enjoy-all-your-dirt-rally-stage-times-recorded-by-this-simple-tool/?do=findComment&comment=521010)  
-Linux users refer to [this issue](https://github.com/soong-construction/dirt-rally-time-recorder/issues/36#issuecomment-674543057) for set up and usage instructions.  
+**Nothing happens when a stage loads**
+Telemetry is probably off. A game update may have reset `hardware_settings_config.xml`. Also check that the port matches `config.yml`.
 
-## Resources
-UDP telemetry documentation (cf. DiRT 4 for DiRT Rally 2.0):  
-[https://docs.google.com/spreadsheets/d/1Xsv5E9jwgJsiXCZQlM5Ae2hH5mUnjdHlTtEadnSnaeI/edit?usp=sharing]
+**Other devices can't open the leaderboard**
+Allow Python in Windows Defender Firewall for private networks. Use the address shown in the console, not `localhost`.
 
-Contributors cf. to `docs/develop.md`.
+The log files `tournament.log` and `timerecord.log` are in the program folder.
 
-## Remainder
-Tested with
-- DiRT Rally (v1.22)
-- DiRT Rally 2.0 (v1.18)
+---
 
-Ships with SQLite [3.39.4](https://www.sqlite.org/2022/sqlite-tools-win32-x86-3390400.zip).
+## Original time recorder
 
-UDP data recognition in collaboration with ErlerPhilipp: https://github.com/ErlerPhilipp/dr2_logger.
+The original personal stage time recorder is still included and unchanged in use:
 
-Thanks to Slocan for the initial version: https://github.com/Slocan/timerecord.
+```powershell
+py -m pip install -r requirements.txt
+py -m timerecorder.timerecord
+```
 
-Credits to Billiam for the core code: https://github.com/Billiam/pygauge.
+It records every finished stage to `dirtrally-laptimes.db` (see `resources/list-laptimes.bat` and `export-laptimes.bat`). For its features, heuristics for cars that can't be told apart and its limitations, see the [original project's README](https://github.com/soong-construction/dirt-rally-time-recorder#readme) and [docs/configuration.md](docs/configuration.md).
 
-See `LICENSE` and `THIRD_PARTY_LICENSES.txt` for works used under license.
+---
+
+## Credits
+
+This project is a fork of **[dirt-rally-time-recorder](https://github.com/soong-construction/dirt-rally-time-recorder)** by **Max Bechtold** (soong-construction), MIT License. All telemetry decoding, car and track recognition, and the car/track database come from that project. The tournament features are built on top of it.
+
+The original project credits, which also apply here:
+
+- [Slocan/timerecord](https://github.com/Slocan/timerecord): the initial version
+- [Billiam/pygauge](https://github.com/Billiam/pygauge): the core code
+- [ErlerPhilipp/dr2_logger](https://github.com/ErlerPhilipp/dr2_logger): DR2 UDP data recognition, and the reference for detecting paused telemetry used in tournament mode
+
+Third-party licenses are listed in [THIRD_PARTY_LICENSES.txt](THIRD_PARTY_LICENSES.txt).
+
+DiRT Rally 2.0 is a trademark of its respective owners. This project is not affiliated with or endorsed by Codemasters or Electronic Arts.
+
+---
+
+## Declaration of AI use
+
+The tournament features of this fork were written with the help of an AI assistant: **Claude** by Anthropic, used through the Claude desktop app. This covers:
+
+- the nickname prompt and game pausing
+- results and DNF detection
+- the tournament setup
+- the web leaderboard, admin portal and backups
+- the Python 3.12+ receiver
+- the tests and documentation, including this README
+
+The project owner chose the features and rules, reviewed the changes, and tested them with DiRT Rally 2.0 on real hardware. The AI wrote the code from those instructions and checked it with automated tests and simulated telemetry.
+
+The code from the original project is not AI-generated, apart from the small changes needed for tournament mode and Python 3.12+.
+
+---
+
+## License
+
+MIT License: see [LICENSE](LICENSE). Copyright for the original work: Max Bechtold and the original authors listed there. The tournament additions are under the same license.
